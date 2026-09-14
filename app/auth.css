@@ -1,0 +1,106 @@
+.auth-loading {
+  min-height: 100vh;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.auth-loading > .logo {
+  margin-bottom: 8px;
+}
+
+.auth-loading > .spin {
+  width: 22px;
+  color: var(--blue);
+}
+
+.auth-message {
+  margin: 2px 0 0;
+  border-radius: 11px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.auth-message svg {
+  width: 16px;
+  flex: none;
+}
+
+.auth-message.success {
+  color: #175f3e;
+  background: #def7e9;
+  border: 1px solid #a8dfbf;
+}
+
+.auth-message.error {
+  color: #8d2e29;
+  background: #fff0ef;
+  border: 1px solid #e8b7b3;
+}
+
+.account-session {
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+  padding-top: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.account-session > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.account-session b {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.account-session span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.account-session > button {
+  border: 1.5px solid #c9a09d;
+  background: #fff0ef;
+  color: #8d2e29;
+  border-radius: 10px;
+  padding: 9px 11px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.account-session > button svg {
+  width: 15px;
+}
+
+@media (max-width: 760px) {
+  .account-session {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .account-session > button {
+    width: 100%;
+    justify-content: center;
+  }
+}
