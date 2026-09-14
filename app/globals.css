@@ -3093,30 +3093,23 @@ textarea:focus-visible {
   }
 }
 
-.email-entry {
-  grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
-}
-
-.email-entry label {
-  grid-column: 1;
-}
-
-.email-entry input {
-  width: 100%;
-}
-
-.email-entry button {
-  width: max-content;
-  min-width: 124px;
-  min-height: 44px;
+.google-privacy-note {
+  margin: 6px 0 0;
+  display: flex;
+  align-items: flex-start;
   justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
 }
 
-@media (max-width: 850px) {
-  .email-entry button {
-    width: 100%;
-  }
+.google-privacy-note svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--blue);
 }
 
 @media (prefers-reduced-motion: reduce) {
