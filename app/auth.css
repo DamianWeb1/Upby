@@ -48,6 +48,35 @@
   border: 1px solid #e8b7b3;
 }
 
+.email-entry .otp-input {
+  text-align: center;
+  letter-spacing: 0.32em;
+  font-size: 22px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.otp-options {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.otp-options > button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 4px 0;
+  font-size: 10px;
+  font-weight: 850;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.otp-options > button:disabled {
+  opacity: 0.45;
+}
+
 .account-session {
   border-top: 1px solid var(--line);
   margin-top: 12px;
