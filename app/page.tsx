@@ -347,11 +347,18 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
+    if (!authReady) return;
+    if (!authUser) {
+      setHydrated(true);
+      return;
+    }
+    const userStorageKey = `${STORAGE_KEY}:${authUser.id}`;
+    setHydrated(false);
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const raw = window.localStorage.getItem(userStorageKey);
       if (raw) {
         const saved = JSON.parse(raw) as Partial<PersistedState>;
-        if (saved.stage === "auth" || saved.stage === "onboarding" || saved.stage === "app") setStage(saved.stage);
+        if (saved.stage === "onboarding" || saved.stage === "app") setStage(saved.stage);
         if (saved.tab === "home" || saved.tab === "insights" || saved.tab === "profile") setTab(saved.tab);
         if (Array.isArray(saved.logs)) setLogs(saved.logs);
         if (typeof saved.freshStart === "boolean") setFreshStart(saved.freshStart);
@@ -359,22 +366,34 @@ export default function App() {
         if (Array.isArray(saved.prefs) && saved.prefs.length === 5) setPrefs(saved.prefs.map((value) => Number(Boolean(value))));
         if (Array.isArray(saved.following)) setFollowing(saved.following.filter((value): value is string => typeof value === "string"));
         if (Array.isArray(saved.customCategories)) setCustomCategories(saved.customCategories.filter((item): item is [string, string] => Array.isArray(item) && typeof item[0] === "string" && typeof item[1] === "string"));
+      } else {
+        setStage(authUser.user_metadata?.onboarding_complete ? "app" : "onboarding");
+        setTab("home");
+        setLogs([]);
+        setFreshStart(true);
+        setPrefs(DEFAULT_PREFS);
+        setFollowing([]);
+        setCustomCategories([]);
       }
     } catch {
-      window.localStorage.removeItem(STORAGE_KEY);
+      window.localStorage.removeItem(userStorageKey);
+      setLogs([]);
+      setFreshStart(true);
+      setFollowing([]);
+      setCustomCategories([]);
     } finally {
       setHydrated(true);
     }
-  }, []);
+  }, [authReady, authUser?.id]);
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !authUser) return;
     const saved: PersistedState = { version: 1, stage, tab, logs, freshStart, profile, prefs, following, customCategories };
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+      window.localStorage.setItem(`${STORAGE_KEY}:${authUser.id}`, JSON.stringify(saved));
     } catch {
       setToast("Your browser could not save this update");
     }
-  }, [hydrated, stage, tab, logs, freshStart, profile, prefs, following, customCategories]);
+  }, [hydrated, authUser, stage, tab, logs, freshStart, profile, prefs, following, customCategories]);
   const trackedLogs = logs.filter((log) => !log.dateKey || new Date(`${log.dateKey}T00:00:00`).getMonth() === new Date().getMonth());
   const wins =
       (freshStart ? 0 : 3390) +
