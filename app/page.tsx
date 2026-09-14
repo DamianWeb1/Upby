@@ -37,7 +37,6 @@ import {
   ShieldCheck,
   Zap,
   Target,
-  Mail,
   LoaderCircle,
   LogOut,
   PartyPopper,
@@ -142,42 +141,24 @@ function Logo() {
   );
 }
 function AuthWelcome({ onDemo }: { onDemo: () => void }) {
-  const [emailOpen, setEmailOpen] = useState(false);
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState<"google" | "email" | null>(null);
-  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const continueWith = async (method: "google" | "email") => {
-    const normalizedEmail = email.trim();
-    if (method === "email" && !normalizedEmail.includes("@")) return;
+  const continueWithGoogle = async () => {
     setErrorMessage("");
-    setMessage("");
-    setBusy(method);
+    setBusy(true);
     try {
-      if (method === "google") {
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: { redirectTo: window.location.origin },
-        });
-        if (error) throw error;
-        return;
-      }
-      const { error } = await supabase.auth.signInWithOtp({
-        email: normalizedEmail,
-        options: { emailRedirectTo: window.location.origin },
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin,
+          scopes: "openid email profile",
+        },
       });
       if (error) throw error;
-      setMessage(`Sign-in link sent to ${normalizedEmail}. Check your inbox and spam folder.`);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : "";
-      const deliveryLimited = /not authorized|rate limit|email rate/i.test(detail);
-      setErrorMessage(
-        deliveryLimited
-          ? "Email delivery is currently limited. Use Google sign-in or try an approved test email."
-          : detail || "Sign-in failed. Please try again."
-      );
+      setErrorMessage(error instanceof Error ? error.message : "Google sign-in failed. Please try again.");
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   };
   return (
@@ -211,27 +192,11 @@ function AuthWelcome({ onDemo }: { onDemo: () => void }) {
           <p>Create your profile and keep every win and loss in one place.</p>
         </div>
         <div className="auth-actions">
-          <button className="google-button" onClick={() => continueWith("google")} disabled={busy !== null}>
-            {busy === "google" ? <LoaderCircle className="spin" /> : <i>G</i>}
+          <button className="google-button" onClick={continueWithGoogle} disabled={busy}>
+            {busy ? <LoaderCircle className="spin" /> : <i>G</i>}
             Continue with Google
           </button>
-          <button className="email-button" onClick={() => setEmailOpen(!emailOpen)} disabled={busy !== null}>
-            <Mail /> Continue with email
-            <ChevronDown className={emailOpen ? "open" : ""} />
-          </button>
-          <AnimatePresence>
-            {emailOpen && (
-              <motion.div className="email-entry" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                <label htmlFor="upby-email">EMAIL ADDRESS</label>
-                <input id="upby-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" />
-                <button disabled={!email.includes("@") || busy !== null} onClick={() => continueWith("email")}>
-                  {busy === "email" ? <LoaderCircle className="spin" /> : "SEND LINK"}
-                  {busy !== "email" && <ArrowUpRight />}
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-          {message && <p className="auth-message success"><Check />{message}</p>}
+          <p className="google-privacy-note"><ShieldCheck />UPBY only receives your basic name, email, and profile picture.</p>
           {errorMessage && <p className="auth-message error">{errorMessage}</p>}
         </div>
         <div className="auth-divider"><span>OR</span></div>
