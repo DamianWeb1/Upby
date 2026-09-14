@@ -545,7 +545,7 @@ export default function App() {
         {share && <Share log={share} net={net} close={() => setShare(null)} />}
       </AnimatePresence>
       <AnimatePresence>
-        {success && <LogSuccess log={success} close={() => setSuccess(null)} />}
+        {success && <LogSuccess log={success} />}
       </AnimatePresence>
       <AnimatePresence>
         {toast && (
@@ -1162,7 +1162,7 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
     return totals;
   }, {});
   const categoryItems = freshStart
-    ? Object.entries(categoryTotals).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 5).map(([name, value], index) => [name, signedMoney(value), ["big", "mid", "coral", "small", ""][index]])
+    ? (Object.entries(categoryTotals) as Array<[string, number]>).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 5).map(([name, value], index) => [name, signedMoney(value), ["big", "mid", "coral", "small", ""][index]])
     : [["Bounties", "$1,850", "big"], ["Dev", "$1,420", "mid"], ["Content", "$840", "coral"], ["X Money", "$510", "small"], ["Other", "$300", ""]];
   const bestCategory = categoryItems.length ? String(categoryItems[0][0]) : "No logs yet";
   const earned = freshStart ? earnedFrom(logs, net) : badges.slice(0, 7);
