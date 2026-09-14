@@ -55,7 +55,8 @@ type Log = {
 };
 type ProfileData = { displayName: string; username: string; xProfile: string; avatarUrl: string | null };
 type PersistedState = {
-  version: 1;
+  version: 2;
+  ownerId: string;
   stage: "auth" | "onboarding" | "app";
   tab: Tab;
   logs: Log[];
@@ -65,7 +66,7 @@ type PersistedState = {
   following: string[];
   customCategories: Array<[string, string]>;
 };
-const STORAGE_KEY = "upby:prototype:v1";
+const STORAGE_KEY = "upby:account:v2";
 const DEFAULT_PROFILE: ProfileData = { displayName: "Damian", username: "damian", xProfile: "damian__web", avatarUrl: null };
 const DEFAULT_PREFS = [1, 1, 1, 0, 1];
 const supabase = createClient(
@@ -358,10 +359,11 @@ export default function App() {
       const raw = window.localStorage.getItem(userStorageKey);
       if (raw) {
         const saved = JSON.parse(raw) as Partial<PersistedState>;
+        if (saved.version !== 2 || saved.ownerId !== authUser.id) throw new Error("Account data mismatch");
         if (saved.stage === "onboarding" || saved.stage === "app") setStage(saved.stage);
         if (saved.tab === "home" || saved.tab === "insights" || saved.tab === "profile") setTab(saved.tab);
         if (Array.isArray(saved.logs)) setLogs(saved.logs);
-        if (typeof saved.freshStart === "boolean") setFreshStart(saved.freshStart);
+        setFreshStart(true);
         if (saved.profile && typeof saved.profile.displayName === "string" && typeof saved.profile.username === "string") setProfile({ ...DEFAULT_PROFILE, ...saved.profile });
         if (Array.isArray(saved.prefs) && saved.prefs.length === 5) setPrefs(saved.prefs.map((value) => Number(Boolean(value))));
         if (Array.isArray(saved.following)) setFollowing(saved.following.filter((value): value is string => typeof value === "string"));
@@ -387,7 +389,7 @@ export default function App() {
   }, [authReady, authUser?.id]);
   useEffect(() => {
     if (!hydrated || !authUser) return;
-    const saved: PersistedState = { version: 1, stage, tab, logs, freshStart, profile, prefs, following, customCategories };
+    const saved: PersistedState = { version: 2, ownerId: authUser.id, stage, tab, logs, freshStart: true, profile, prefs, following, customCategories };
     try {
       window.localStorage.setItem(`${STORAGE_KEY}:${authUser.id}`, JSON.stringify(saved));
     } catch {
