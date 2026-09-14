@@ -148,7 +148,8 @@ function AuthWelcome({ onDemo }: { onDemo: () => void }) {
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const continueWith = async (method: "google" | "email") => {
-    if (method === "email" && !email.includes("@")) return;
+    const normalizedEmail = email.trim();
+    if (method === "email" && !normalizedEmail.includes("@")) return;
     setErrorMessage("");
     setMessage("");
     setBusy(method);
@@ -162,13 +163,19 @@ function AuthWelcome({ onDemo }: { onDemo: () => void }) {
         return;
       }
       const { error } = await supabase.auth.signInWithOtp({
-        email,
+        email: normalizedEmail,
         options: { emailRedirectTo: window.location.origin },
       });
       if (error) throw error;
-      setMessage("Check your email for your secure sign-in link.");
+      setMessage(`Sign-in link sent to ${normalizedEmail}. Check your inbox and spam folder.`);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Sign-in failed. Please try again.");
+      const detail = error instanceof Error ? error.message : "";
+      const deliveryLimited = /not authorized|rate limit|email rate/i.test(detail);
+      setErrorMessage(
+        deliveryLimited
+          ? "Email delivery is currently limited. Use Google sign-in or try an approved test email."
+          : detail || "Sign-in failed. Please try again."
+      );
     } finally {
       setBusy(null);
     }
@@ -218,7 +225,7 @@ function AuthWelcome({ onDemo }: { onDemo: () => void }) {
                 <label htmlFor="upby-email">EMAIL ADDRESS</label>
                 <input id="upby-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" />
                 <button disabled={!email.includes("@") || busy !== null} onClick={() => continueWith("email")}>
-                  {busy === "email" ? <LoaderCircle className="spin" /> : "EMAIL ME A SIGN-IN LINK"}
+                  {busy === "email" ? <LoaderCircle className="spin" /> : "SEND LINK"}
                   {busy !== "email" && <ArrowUpRight />}
                 </button>
               </motion.div>
