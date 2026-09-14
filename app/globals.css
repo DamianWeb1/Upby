@@ -3093,6 +3093,32 @@ textarea:focus-visible {
   }
 }
 
+.email-entry {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.email-entry label {
+  grid-column: 1;
+}
+
+.email-entry input {
+  width: 100%;
+}
+
+.email-entry button {
+  width: max-content;
+  min-width: 124px;
+  min-height: 44px;
+  justify-content: center;
+}
+
+@media (max-width: 850px) {
+  .email-entry button {
+    width: 100%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *:before,
