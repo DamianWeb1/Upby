@@ -144,9 +144,7 @@ function Logo() {
 function AuthWelcome({ onDemo }: { onDemo: () => void }) {
   const [emailOpen, setEmailOpen] = useState(false);
   const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [codeSent, setCodeSent] = useState(false);
-  const [busy, setBusy] = useState<"google" | "email" | "verify" | null>(null);
+  const [busy, setBusy] = useState<"google" | "email" | null>(null);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const continueWith = async (method: "google" | "email") => {
@@ -165,29 +163,12 @@ function AuthWelcome({ onDemo }: { onDemo: () => void }) {
       }
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { shouldCreateUser: true },
+        options: { emailRedirectTo: window.location.origin },
       });
       if (error) throw error;
-      setCodeSent(true);
-      setCode("");
-      setMessage(`We sent a 6-digit code to ${email}.`);
+      setMessage("Check your email for your secure sign-in link.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Sign-in failed. Please try again.");
-    } finally {
-      setBusy(null);
-    }
-  };
-  const verifyCode = async () => {
-    if (code.length !== 6) return;
-    setErrorMessage("");
-    setMessage("");
-    setBusy("verify");
-    try {
-      const { error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });
-      if (error) throw error;
-      setMessage("Email verified. Opening your UPBY.");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "That code did not work. Request a new one.");
     } finally {
       setBusy(null);
     }
@@ -234,25 +215,12 @@ function AuthWelcome({ onDemo }: { onDemo: () => void }) {
           <AnimatePresence>
             {emailOpen && (
               <motion.div className="email-entry" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                {!codeSent ? <>
-                  <label htmlFor="upby-email">EMAIL ADDRESS</label>
-                  <input id="upby-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" />
-                  <button disabled={!email.includes("@") || busy !== null} onClick={() => continueWith("email")}>
-                    {busy === "email" ? <LoaderCircle className="spin" /> : "SEND CODE"}
-                    {busy !== "email" && <ArrowUpRight />}
-                  </button>
-                </> : <>
-                  <label htmlFor="upby-code">ENTER YOUR 6-DIGIT CODE</label>
-                  <input id="upby-code" className="otp-input" value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" inputMode="numeric" autoComplete="one-time-code" maxLength={6} autoFocus />
-                  <button disabled={code.length !== 6 || busy !== null} onClick={verifyCode}>
-                    {busy === "verify" ? <LoaderCircle className="spin" /> : "VERIFY CODE"}
-                    {busy !== "verify" && <ArrowUpRight />}
-                  </button>
-                  <div className="otp-options">
-                    <button type="button" onClick={() => { setCodeSent(false); setCode(""); setMessage(""); setErrorMessage(""); }}>Change email</button>
-                    <button type="button" disabled={busy !== null} onClick={() => continueWith("email")}>Resend code</button>
-                  </div>
-                </>}
+                <label htmlFor="upby-email">EMAIL ADDRESS</label>
+                <input id="upby-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" />
+                <button disabled={!email.includes("@") || busy !== null} onClick={() => continueWith("email")}>
+                  {busy === "email" ? <LoaderCircle className="spin" /> : "EMAIL ME A SIGN-IN LINK"}
+                  {busy !== "email" && <ArrowUpRight />}
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
