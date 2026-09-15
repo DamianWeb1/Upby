@@ -378,7 +378,7 @@ export default function App() {
           displayName: metadata.display_name || metadata.full_name || metadata.name || current.displayName,
           username: metadata.username || suggestedUsername || current.username,
           xProfile: metadata.x_profile || current.xProfile,
-          avatarUrl: metadata.avatar_url || current.avatarUrl,
+          avatarUrl: metadata.upby_avatar_url || (metadata.onboarding_complete ? current.avatarUrl : metadata.avatar_url || current.avatarUrl),
         }));
         setStage(metadata.onboarding_complete ? "app" : "onboarding");
         setDemoMode(false);
@@ -439,6 +439,21 @@ export default function App() {
             ? localState
             : undefined;
         if (!savedState) resetAccount();
+
+        const { data: savedProfile, error: savedProfileError } = await supabase
+          .from("profiles")
+          .select("display_name,username,avatar_url")
+          .eq("user_id", authUser.id)
+          .maybeSingle();
+        if (savedProfileError) throw savedProfileError;
+        if (savedProfile && active) {
+          setProfile((current) => ({
+            ...current,
+            displayName: savedProfile.display_name || current.displayName,
+            username: savedProfile.username || current.username,
+            avatarUrl: savedProfile.avatar_url,
+          }));
+        }
 
         const { data: logRows, error: logsError } = await supabase
           .from("logs")
@@ -579,7 +594,7 @@ export default function App() {
   }
   if (stage === "onboarding") {
     return <Onboarding onComplete={async (nextProfile, nextPrefs) => {
-      const { error } = await supabase.auth.updateUser({ data: { display_name: nextProfile.displayName, username: nextProfile.username, x_profile: nextProfile.xProfile, avatar_url: nextProfile.avatarUrl?.startsWith("data:") ? null : nextProfile.avatarUrl, onboarding_complete: true } });
+      const { error } = await supabase.auth.updateUser({ data: { display_name: nextProfile.displayName, username: nextProfile.username, x_profile: nextProfile.xProfile, upby_avatar_url: nextProfile.avatarUrl?.startsWith("data:") ? null : nextProfile.avatarUrl, onboarding_complete: true } });
       if (error) return;
       setProfile(nextProfile); setPrefs(nextPrefs); setFollowing([]); setCustomCategories([]); setFreshStart(true); setLogs([]); setTab("home"); setStage("app");
     }} onBack={signOut} initialProfile={profile} />;
@@ -1648,15 +1663,24 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
         const { error: removeError } = await supabase.storage.from("avatars").remove([`${authUser.id}/avatar`]);
         if (removeError) { setEditError(removeError.message); setSavingProfile(false); return; }
       }
+      const savedAvatarUrl = nextProfile.avatarUrl?.startsWith("data:") ? null : nextProfile.avatarUrl;
       const { error } = await supabase.auth.updateUser({ data: {
         display_name: nextProfile.displayName,
         username: nextProfile.username,
         x_profile: nextProfile.xProfile,
         bio: nextProfile.bio,
-        avatar_url: nextProfile.avatarUrl?.startsWith("data:") ? null : nextProfile.avatarUrl,
+        upby_avatar_url: savedAvatarUrl,
         onboarding_complete: true,
       } });
       if (error) { setEditError(error.message); setSavingProfile(false); return; }
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        user_id: authUser.id,
+        display_name: nextProfile.displayName,
+        username: nextProfile.username,
+        avatar_url: savedAvatarUrl,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id" });
+      if (profileError) { setEditError(profileError.message); setSavingProfile(false); return; }
     }
     setProfile(nextProfile);
     setSavingProfile(false);
