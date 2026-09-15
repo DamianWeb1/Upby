@@ -353,13 +353,10 @@ export default function App() {
       setHydrated(true);
       return;
     }
+    let active = true;
     const userStorageKey = `${STORAGE_KEY}:${authUser.id}`;
-    setHydrated(false);
-    try {
-      const raw = window.localStorage.getItem(userStorageKey);
-      if (raw) {
-        const saved = JSON.parse(raw) as Partial<PersistedState>;
-        if (saved.version !== 2 || saved.ownerId !== authUser.id) throw new Error("Account data mismatch");
+    const applySavedState = (saved: Partial<PersistedState>) => {
+      if (!active || saved.version !== 2 || saved.ownerId !== authUser.id) return false;
         if (saved.stage === "onboarding" || saved.stage === "app") setStage(saved.stage);
         if (saved.tab === "home" || saved.tab === "insights" || saved.tab === "profile") setTab(saved.tab);
         if (Array.isArray(saved.logs)) setLogs(saved.logs);
@@ -368,7 +365,10 @@ export default function App() {
         if (Array.isArray(saved.prefs) && saved.prefs.length === 5) setPrefs(saved.prefs.map((value) => Number(Boolean(value))));
         if (Array.isArray(saved.following)) setFollowing(saved.following.filter((value): value is string => typeof value === "string"));
         if (Array.isArray(saved.customCategories)) setCustomCategories(saved.customCategories.filter((item): item is [string, string] => Array.isArray(item) && typeof item[0] === "string" && typeof item[1] === "string"));
-      } else {
+      return true;
+    };
+    const resetAccount = () => {
+      if (!active) return;
         setStage(authUser.user_metadata?.onboarding_complete ? "app" : "onboarding");
         setTab("home");
         setLogs([]);
@@ -376,16 +376,36 @@ export default function App() {
         setPrefs(DEFAULT_PREFS);
         setFollowing([]);
         setCustomCategories([]);
+    };
+    const hydrateAccount = async () => {
+      setHydrated(false);
+      try {
+        const { data, error } = await supabase
+          .from("user_states")
+          .select("state")
+          .eq("user_id", authUser.id)
+          .maybeSingle();
+        if (error) throw error;
+        const remoteState = data?.state as Partial<PersistedState> | undefined;
+        if (remoteState && applySavedState(remoteState)) return;
+        const raw = window.localStorage.getItem(userStorageKey);
+        if (raw && applySavedState(JSON.parse(raw) as Partial<PersistedState>)) return;
+        resetAccount();
+      } catch {
+        try {
+          const raw = window.localStorage.getItem(userStorageKey);
+          if (!raw || !applySavedState(JSON.parse(raw) as Partial<PersistedState>)) resetAccount();
+        } catch {
+          window.localStorage.removeItem(userStorageKey);
+          resetAccount();
+        }
+        if (active) setToast("Cloud sync is unavailable. Progress is still saved on this device.");
+      } finally {
+        if (active) setHydrated(true);
       }
-    } catch {
-      window.localStorage.removeItem(userStorageKey);
-      setLogs([]);
-      setFreshStart(true);
-      setFollowing([]);
-      setCustomCategories([]);
-    } finally {
-      setHydrated(true);
-    }
+    };
+    hydrateAccount();
+    return () => { active = false; };
   }, [authReady, authUser?.id]);
   useEffect(() => {
     if (!hydrated || !authUser) return;
@@ -395,6 +415,14 @@ export default function App() {
     } catch {
       setToast("Your browser could not save this update");
     }
+    const syncTimer = window.setTimeout(async () => {
+      const { error } = await supabase.from("user_states").upsert(
+        { user_id: authUser.id, state: saved, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" },
+      );
+      if (error) setToast("Cloud sync is unavailable. Progress is still saved on this device.");
+    }, 500);
+    return () => window.clearTimeout(syncTimer);
   }, [hydrated, authUser, stage, tab, logs, freshStart, profile, prefs, following, customCategories]);
   const trackedLogs = logs.filter((log) => !log.dateKey || new Date(`${log.dateKey}T00:00:00`).getMonth() === new Date().getMonth());
   const wins =
