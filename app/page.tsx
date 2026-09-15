@@ -436,22 +436,24 @@ export default function App() {
           .eq("user_id", authUser.id)
           .order("id", { ascending: false });
         if (logsError) throw logsError;
-        if (logRows?.length) {
-          if (active) setLogs((logRows as LogRow[]).map(rowToLog));
-        } else {
-          const legacyLogs = Array.isArray(localState?.logs) && localState.logs.length
-            ? localState.logs
-            : Array.isArray(savedState?.logs)
-              ? savedState.logs
-              : [];
-          if (legacyLogs.length) {
-            const { error: migrationError } = await supabase
-              .from("logs")
-              .upsert(legacyLogs.map((log) => logToRow(log, authUser.id)), { onConflict: "user_id,id" });
-            if (migrationError) throw migrationError;
-          }
-          if (active) setLogs(legacyLogs);
+        const localLogs = Array.isArray(localState?.logs)
+          ? localState.logs
+          : Array.isArray(savedState?.logs)
+            ? savedState.logs
+            : [];
+        const remoteLogs = (logRows as LogRow[] | null)?.map(rowToLog) || [];
+        const localIds = new Set(localLogs.map((log) => log.id));
+        const mergedLogs = [
+          ...localLogs,
+          ...remoteLogs.filter((log) => !localIds.has(log.id)),
+        ].sort((a, b) => b.id - a.id);
+        if (localLogs.length) {
+          const { error: migrationError } = await supabase
+            .from("logs")
+            .upsert(localLogs.map((log) => logToRow(log, authUser.id)), { onConflict: "user_id,id" });
+          if (migrationError) throw migrationError;
         }
+        if (active) setLogs(mergedLogs);
       } catch {
         try {
           const raw = window.localStorage.getItem(userStorageKey);
