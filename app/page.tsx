@@ -53,6 +53,18 @@ type Log = {
   note?: string;
   screenshot?: boolean;
 };
+type LogRow = {
+  id: number | string;
+  user_id: string;
+  type: "win" | "loss";
+  amount: number | string;
+  category: string;
+  title: string;
+  date_label: string;
+  date_key: string | null;
+  note: string | null;
+  screenshot: boolean;
+};
 type ProfileData = { displayName: string; username: string; xProfile: string; avatarUrl: string | null };
 type PersistedState = {
   version: 2;
@@ -133,6 +145,29 @@ const money = (n: number) =>
     maximumFractionDigits: 0,
   }).format(n);
 const signedMoney = (n: number) => `${n > 0 ? "+" : n < 0 ? "-" : ""}${money(Math.abs(n))}`;
+const logToRow = (log: Log, userId: string): LogRow => ({
+  id: log.id,
+  user_id: userId,
+  type: log.type,
+  amount: log.amount,
+  category: log.category,
+  title: log.title,
+  date_label: log.date,
+  date_key: log.dateKey || null,
+  note: log.note || null,
+  screenshot: Boolean(log.screenshot),
+});
+const rowToLog = (row: LogRow): Log => ({
+  id: Number(row.id),
+  type: row.type,
+  amount: Number(row.amount),
+  category: row.category,
+  title: row.title,
+  date: row.date_label,
+  dateKey: row.date_key || undefined,
+  note: row.note || undefined,
+  screenshot: row.screenshot,
+});
 function Logo() {
   return (
     <div className="logo">
@@ -357,44 +392,72 @@ export default function App() {
     const userStorageKey = `${STORAGE_KEY}:${authUser.id}`;
     const applySavedState = (saved: Partial<PersistedState>) => {
       if (!active || saved.version !== 2 || saved.ownerId !== authUser.id) return false;
-        if (saved.stage === "onboarding" || saved.stage === "app") setStage(saved.stage);
-        if (saved.tab === "home" || saved.tab === "insights" || saved.tab === "profile") setTab(saved.tab);
-        if (Array.isArray(saved.logs)) setLogs(saved.logs);
-        setFreshStart(true);
-        if (saved.profile && typeof saved.profile.displayName === "string" && typeof saved.profile.username === "string") setProfile({ ...DEFAULT_PROFILE, ...saved.profile });
-        if (Array.isArray(saved.prefs) && saved.prefs.length === 5) setPrefs(saved.prefs.map((value) => Number(Boolean(value))));
-        if (Array.isArray(saved.following)) setFollowing(saved.following.filter((value): value is string => typeof value === "string"));
-        if (Array.isArray(saved.customCategories)) setCustomCategories(saved.customCategories.filter((item): item is [string, string] => Array.isArray(item) && typeof item[0] === "string" && typeof item[1] === "string"));
+      if (saved.stage === "onboarding" || saved.stage === "app") setStage(saved.stage);
+      if (saved.tab === "home" || saved.tab === "insights" || saved.tab === "profile") setTab(saved.tab);
+      setFreshStart(true);
+      if (saved.profile && typeof saved.profile.displayName === "string" && typeof saved.profile.username === "string") setProfile({ ...DEFAULT_PROFILE, ...saved.profile });
+      if (Array.isArray(saved.prefs) && saved.prefs.length === 5) setPrefs(saved.prefs.map((value) => Number(Boolean(value))));
+      if (Array.isArray(saved.following)) setFollowing(saved.following.filter((value): value is string => typeof value === "string"));
+      if (Array.isArray(saved.customCategories)) setCustomCategories(saved.customCategories.filter((item): item is [string, string] => Array.isArray(item) && typeof item[0] === "string" && typeof item[1] === "string"));
       return true;
     };
     const resetAccount = () => {
       if (!active) return;
-        setStage(authUser.user_metadata?.onboarding_complete ? "app" : "onboarding");
-        setTab("home");
-        setLogs([]);
-        setFreshStart(true);
-        setPrefs(DEFAULT_PREFS);
-        setFollowing([]);
-        setCustomCategories([]);
+      setStage(authUser.user_metadata?.onboarding_complete ? "app" : "onboarding");
+      setTab("home");
+      setLogs([]);
+      setFreshStart(true);
+      setPrefs(DEFAULT_PREFS);
+      setFollowing([]);
+      setCustomCategories([]);
     };
     const hydrateAccount = async () => {
       setHydrated(false);
       try {
-        const { data, error } = await supabase
+        const { data: stateData, error: stateError } = await supabase
           .from("user_states")
           .select("state")
           .eq("user_id", authUser.id)
           .maybeSingle();
-        if (error) throw error;
-        const remoteState = data?.state as Partial<PersistedState> | undefined;
-        if (remoteState && applySavedState(remoteState)) return;
+        if (stateError) throw stateError;
         const raw = window.localStorage.getItem(userStorageKey);
-        if (raw && applySavedState(JSON.parse(raw) as Partial<PersistedState>)) return;
-        resetAccount();
+        const localState = raw ? JSON.parse(raw) as Partial<PersistedState> : undefined;
+        const remoteState = stateData?.state as Partial<PersistedState> | undefined;
+        const savedState = remoteState && applySavedState(remoteState)
+          ? remoteState
+          : localState && applySavedState(localState)
+            ? localState
+            : undefined;
+        if (!savedState) resetAccount();
+
+        const { data: logRows, error: logsError } = await supabase
+          .from("logs")
+          .select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot")
+          .eq("user_id", authUser.id)
+          .order("id", { ascending: false });
+        if (logsError) throw logsError;
+        if (logRows?.length) {
+          if (active) setLogs((logRows as LogRow[]).map(rowToLog));
+        } else {
+          const legacyLogs = Array.isArray(localState?.logs) && localState.logs.length
+            ? localState.logs
+            : Array.isArray(savedState?.logs)
+              ? savedState.logs
+              : [];
+          if (legacyLogs.length) {
+            const { error: migrationError } = await supabase
+              .from("logs")
+              .upsert(legacyLogs.map((log) => logToRow(log, authUser.id)), { onConflict: "user_id,id" });
+            if (migrationError) throw migrationError;
+          }
+          if (active) setLogs(legacyLogs);
+        }
       } catch {
         try {
           const raw = window.localStorage.getItem(userStorageKey);
-          if (!raw || !applySavedState(JSON.parse(raw) as Partial<PersistedState>)) resetAccount();
+          const localState = raw ? JSON.parse(raw) as Partial<PersistedState> : undefined;
+          if (!localState || !applySavedState(localState)) resetAccount();
+          else if (active && Array.isArray(localState.logs)) setLogs(localState.logs);
         } catch {
           window.localStorage.removeItem(userStorageKey);
           resetAccount();
@@ -410,6 +473,7 @@ export default function App() {
   useEffect(() => {
     if (!hydrated || !authUser) return;
     const saved: PersistedState = { version: 2, ownerId: authUser.id, stage, tab, logs, freshStart: true, profile, prefs, following, customCategories };
+    const remoteState: PersistedState = { ...saved, logs: [] };
     try {
       window.localStorage.setItem(`${STORAGE_KEY}:${authUser.id}`, JSON.stringify(saved));
     } catch {
@@ -417,7 +481,7 @@ export default function App() {
     }
     const syncTimer = window.setTimeout(async () => {
       const { error } = await supabase.from("user_states").upsert(
-        { user_id: authUser.id, state: saved, updated_at: new Date().toISOString() },
+        { user_id: authUser.id, state: remoteState, updated_at: new Date().toISOString() },
         { onConflict: "user_id" },
       );
       if (error) setToast("Cloud sync is unavailable. Progress is still saved on this device.");
@@ -447,6 +511,11 @@ export default function App() {
   const add = (x: Omit<Log, "id">) => {
     const l = { ...x, id: Date.now() };
     setLogs((v) => [l, ...v]);
+    if (authUser) {
+      void supabase.from("logs").insert(logToRow(l, authUser.id)).then(({ error }) => {
+        if (error) setToast("This log is saved locally but has not synced yet.");
+      });
+    }
     setSheet(null);
     showSuccess(l);
     if (x.type === "win") setTimeout(() => setShare(l), 1750);
@@ -454,11 +523,21 @@ export default function App() {
   const updateLog = (id: number, data: Omit<Log, "id">) => {
     const updated = { ...data, id };
     setLogs((items) => items.map((item) => item.id === id ? updated : item));
+    if (authUser) {
+      void supabase.from("logs").update(logToRow(updated, authUser.id)).eq("user_id", authUser.id).eq("id", id).then(({ error }) => {
+        if (error) setToast("Your edit is saved locally but has not synced yet.");
+      });
+    }
     setEditing(null);
     showSuccess(updated);
   };
   const removeLog = (id: number) => {
     setLogs((items) => items.filter((item) => item.id !== id));
+    if (authUser) {
+      void supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id).then(({ error }) => {
+        if (error) setToast("The log was removed locally but the cloud update failed.");
+      });
+    }
     setToast("Log removed");
     setTimeout(() => setToast(""), 1800);
   };
