@@ -962,6 +962,7 @@ textarea:focus-visible {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
 }
 .settings {
   position: absolute;
@@ -981,6 +982,7 @@ textarea:focus-visible {
   font-size: 65px;
   font-weight: 950;
   position: relative;
+  overflow: hidden;
 }
 .big-avatar i {
   position: absolute;
@@ -1010,6 +1012,61 @@ textarea:focus-visible {
   text-decoration: none;
   margin-top: 7px;
 }
+.profile-actions { display: grid; gap: 9px; min-width: 180px; }
+.edit-profile {
+  border: 2px solid var(--ink);
+  background: var(--lime);
+  box-shadow: 3px 3px 0 var(--ink);
+  border-radius: 12px;
+  min-height: 43px;
+  padding: 9px 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 950;
+}
+.edit-profile svg { width: 16px; }
+.profile-editor {
+  width: min(620px, calc(100% - 28px));
+  max-height: min(760px, calc(100vh - 28px));
+  overflow-y: auto;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  box-shadow: 8px 8px 0 var(--ink);
+  border-radius: 28px;
+  padding: 25px;
+}
+.profile-editor > header { display: flex; align-items: flex-start; justify-content: space-between; }
+.profile-editor > header span { font-size: 9px; letter-spacing: 1.5px; font-weight: 950; }
+.profile-editor > header h2 { margin: 3px 0 0; font-size: 34px; letter-spacing: -1.5px; }
+.profile-editor > header > button { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 50%; background: transparent; display: grid; place-items: center; }
+.profile-editor > header svg { width: 18px; }
+.profile-photo-edit { display: flex; align-items: center; gap: 12px; margin: 20px 0; }
+.profile-photo-edit > div { width: 82px; height: 82px; flex: none; overflow: hidden; border: 2px solid var(--ink); border-radius: 50%; background: var(--coral); display: grid; place-items: center; font-size: 34px; font-weight: 950; }
+.profile-photo-edit img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.profile-photo-edit label { border: 2px solid var(--ink); border-radius: 11px; padding: 10px 12px; display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 900; cursor: pointer; }
+.profile-photo-edit label input { display: none; }
+.profile-photo-edit label svg { width: 16px; }
+.profile-photo-edit > button { border: 0; background: transparent; color: #a52a2a; font-size: 10px; font-weight: 900; }
+.profile-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.profile-fields > label { display: grid; gap: 6px; }
+.profile-fields > label > span { font-size: 9px; letter-spacing: 1.2px; font-weight: 950; }
+.profile-fields input, .profile-fields textarea, .edit-username { width: 100%; border: 1.5px solid var(--line); background: white; border-radius: 12px; font: inherit; }
+.profile-fields > label > input { height: 48px; padding: 0 13px; }
+.edit-username { height: 48px; padding: 0 12px; display: flex; align-items: center; }
+.edit-username b { color: var(--muted); }
+.edit-username input { min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; padding: 0 5px; }
+.profile-fields .bio-field { grid-column: 1 / -1; position: relative; }
+.bio-field textarea { min-height: 94px; resize: vertical; padding: 12px; }
+.bio-field small { position: absolute; right: 10px; bottom: 8px; color: var(--muted); font-size: 10px; }
+.profile-edit-error { color: #a52a2a; font-size: 12px; font-weight: 750; }
+.profile-editor > footer { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
+.profile-editor > footer button { min-height: 43px; border-radius: 11px; padding: 9px 15px; font-size: 10px; font-weight: 950; }
+.profile-editor > footer .cancel { border: 1px solid var(--line); background: transparent; }
+.profile-editor > footer .save { border: 2px solid var(--ink); background: var(--blue); color: white; display: flex; align-items: center; gap: 6px; }
+.profile-editor > footer .save svg { width: 16px; }
 .privacy {
   overflow: hidden;
   background: var(--navy);
@@ -1601,6 +1658,11 @@ textarea:focus-visible {
     text-align: center;
     padding: 34px 19px;
   }
+  .profile-actions { width: 100%; }
+  .profile-fields { grid-template-columns: 1fr; }
+  .profile-fields .bio-field { grid-column: auto; }
+  .profile-editor { padding: 20px 16px; border-radius: 22px; max-height: calc(100vh - 20px); }
+  .profile-photo-edit { flex-wrap: wrap; }
   .big-avatar {
     width: 115px;
     height: 115px;
