@@ -1617,13 +1617,16 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     [publicPreview, setPublicPreview] = useState(false),
     [editingProfile, setEditingProfile] = useState(false),
     [draftProfile, setDraftProfile] = useState<ProfileData>(profile),
+    [avatarFile, setAvatarFile] = useState<File | null>(null),
+    [savingProfile, setSavingProfile] = useState(false),
     [editError, setEditError] = useState("");
   const streak = freshStart ? (logs.length ? 1 : 0) : 12;
   const earned = freshStart ? earnedFrom(logs, net) : ["FIRST WIN", "30 DAY STREAK", "$5K MONTH", "TOP 100"];
   const selectedAchievements = freshStart ? earned.slice(0, 4) : earned;
-  const openProfileEditor = () => { setDraftProfile(profile); setEditError(""); setEditingProfile(true); };
+  const openProfileEditor = () => { setDraftProfile(profile); setAvatarFile(null); setEditError(""); setEditingProfile(true); };
   const saveProfile = async () => {
-    const nextProfile = {
+    setSavingProfile(true);
+    let nextProfile = {
       ...draftProfile,
       displayName: draftProfile.displayName.trim(),
       username: draftProfile.username.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24),
@@ -1632,9 +1635,19 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     };
     if (nextProfile.displayName.length < 2 || nextProfile.username.length < 3) {
       setEditError("Add a display name and a username with at least 3 characters.");
+      setSavingProfile(false);
       return;
     }
     if (!demoMode && authUser) {
+      if (avatarFile) {
+        const { error: uploadError } = await supabase.storage.from("avatars").upload(`${authUser.id}/avatar`, avatarFile, { upsert: true, contentType: avatarFile.type, cacheControl: "3600" });
+        if (uploadError) { setEditError(uploadError.message); setSavingProfile(false); return; }
+        const { data } = supabase.storage.from("avatars").getPublicUrl(`${authUser.id}/avatar`);
+        nextProfile = { ...nextProfile, avatarUrl: `${data.publicUrl}?v=${Date.now()}` };
+      } else if (profile.avatarUrl && !nextProfile.avatarUrl) {
+        const { error: removeError } = await supabase.storage.from("avatars").remove([`${authUser.id}/avatar`]);
+        if (removeError) { setEditError(removeError.message); setSavingProfile(false); return; }
+      }
       const { error } = await supabase.auth.updateUser({ data: {
         display_name: nextProfile.displayName,
         username: nextProfile.username,
@@ -1643,9 +1656,10 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
         avatar_url: nextProfile.avatarUrl?.startsWith("data:") ? null : nextProfile.avatarUrl,
         onboarding_complete: true,
       } });
-      if (error) { setEditError(error.message); return; }
+      if (error) { setEditError(error.message); setSavingProfile(false); return; }
     }
     setProfile(nextProfile);
+    setSavingProfile(false);
     setEditingProfile(false);
   };
   return (
@@ -1679,8 +1693,8 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
               <header><div><span>YOUR PROFILE</span><h2>Edit profile</h2></div><button onClick={() => setEditingProfile(false)}><X /></button></header>
               <div className="profile-photo-edit">
                 <div>{draftProfile.avatarUrl ? <img src={draftProfile.avatarUrl} alt="Profile preview" /> : draftProfile.displayName.slice(0, 1).toUpperCase()}</div>
-                <label><Camera />CHANGE PHOTO<input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setDraftProfile((current) => ({ ...current, avatarUrl: typeof reader.result === "string" ? reader.result : null })); reader.readAsDataURL(file); }} /></label>
-                {draftProfile.avatarUrl && <button onClick={() => setDraftProfile((current) => ({ ...current, avatarUrl: null }))}>REMOVE</button>}
+                <label><Camera />CHANGE PHOTO<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; if (file.size > 5 * 1024 * 1024) { setEditError("Choose an image smaller than 5 MB."); return; } setAvatarFile(file); const reader = new FileReader(); reader.onload = () => setDraftProfile((current) => ({ ...current, avatarUrl: typeof reader.result === "string" ? reader.result : null })); reader.readAsDataURL(file); }} /></label>
+                {draftProfile.avatarUrl && <button onClick={() => { setAvatarFile(null); setDraftProfile((current) => ({ ...current, avatarUrl: null })); }}>REMOVE</button>}
               </div>
               <div className="profile-fields">
                 <label><span>DISPLAY NAME</span><input value={draftProfile.displayName} maxLength={40} onChange={(event) => setDraftProfile((current) => ({ ...current, displayName: event.target.value }))} /></label>
@@ -1689,7 +1703,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
                 <label className="bio-field"><span>BIO</span><textarea value={draftProfile.bio || ""} maxLength={160} placeholder="Tell people what you do" onChange={(event) => setDraftProfile((current) => ({ ...current, bio: event.target.value }))} /><small>{draftProfile.bio?.length || 0}/160</small></label>
               </div>
               {editError && <p className="profile-edit-error">{editError}</p>}
-              <footer><button className="cancel" onClick={() => setEditingProfile(false)}>CANCEL</button><button className="save" onClick={saveProfile}><Check />SAVE CHANGES</button></footer>
+              <footer><button className="cancel" disabled={savingProfile} onClick={() => setEditingProfile(false)}>CANCEL</button><button className="save" disabled={savingProfile} onClick={saveProfile}>{savingProfile ? <LoaderCircle className="spin" /> : <Check />}{savingProfile ? "SAVING" : "SAVE CHANGES"}</button></footer>
             </motion.section>
           </motion.div>
         )}
