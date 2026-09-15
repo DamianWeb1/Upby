@@ -462,7 +462,6 @@ export default function App() {
           window.localStorage.removeItem(userStorageKey);
           resetAccount();
         }
-        if (active) setToast("Cloud sync is unavailable. Progress is still saved on this device.");
       } finally {
         if (active) setHydrated(true);
       }
@@ -484,7 +483,7 @@ export default function App() {
         { user_id: authUser.id, state: remoteState, updated_at: new Date().toISOString() },
         { onConflict: "user_id" },
       );
-      if (error) setToast("Cloud sync is unavailable. Progress is still saved on this device.");
+      if (error) return;
     }, 500);
     return () => window.clearTimeout(syncTimer);
   }, [hydrated, authUser, stage, tab, logs, freshStart, profile, prefs, following, customCategories]);
@@ -512,9 +511,7 @@ export default function App() {
     const l = { ...x, id: Date.now() };
     setLogs((v) => [l, ...v]);
     if (authUser) {
-      void supabase.from("logs").insert(logToRow(l, authUser.id)).then(({ error }) => {
-        if (error) setToast("This log is saved locally but has not synced yet.");
-      });
+      void supabase.from("logs").upsert(logToRow(l, authUser.id), { onConflict: "user_id,id" });
     }
     setSheet(null);
     showSuccess(l);
@@ -524,9 +521,7 @@ export default function App() {
     const updated = { ...data, id };
     setLogs((items) => items.map((item) => item.id === id ? updated : item));
     if (authUser) {
-      void supabase.from("logs").update(logToRow(updated, authUser.id)).eq("user_id", authUser.id).eq("id", id).then(({ error }) => {
-        if (error) setToast("Your edit is saved locally but has not synced yet.");
-      });
+      void supabase.from("logs").upsert(logToRow(updated, authUser.id), { onConflict: "user_id,id" });
     }
     setEditing(null);
     showSuccess(updated);
@@ -534,9 +529,7 @@ export default function App() {
   const removeLog = (id: number) => {
     setLogs((items) => items.filter((item) => item.id !== id));
     if (authUser) {
-      void supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id).then(({ error }) => {
-        if (error) setToast("The log was removed locally but the cloud update failed.");
-      });
+      void supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id);
     }
     setToast("Log removed");
     setTimeout(() => setToast(""), 1800);
