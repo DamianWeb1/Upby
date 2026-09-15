@@ -1204,6 +1204,20 @@ textarea:focus-visible {
   margin: auto;
   padding: 35px 24px 90px;
 }
+.leader-empty {
+  margin: 24px auto;
+  max-width: 420px;
+  padding: 32px 22px;
+  border: 2px dashed rgba(18, 20, 45, .24);
+  border-radius: 24px;
+  text-align: center;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+}
+.leader-empty svg { width: 28px; height: 28px; }
+.leader-empty b { font-size: 18px; }
+.leader-empty span { color: #686a7b; font-size: 14px; }
 .leader-title {
   text-align: center;
 }
