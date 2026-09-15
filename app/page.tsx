@@ -66,6 +66,15 @@ type LogRow = {
   screenshot: boolean;
 };
 type ProfileData = { displayName: string; username: string; xProfile: string; avatarUrl: string | null };
+type LeaderboardEntry = {
+  rank: number | string;
+  user_id: string;
+  display_name: string;
+  username: string;
+  avatar_url: string | null;
+  net: number | string;
+  streak: number | string;
+};
 type PersistedState = {
   version: 2;
   ownerId: string;
@@ -345,6 +354,7 @@ export default function App() {
     [prefs, setPrefs] = useState(DEFAULT_PREFS),
     [following, setFollowing] = useState<string[]>(["Maya"]),
     [customCategories, setCustomCategories] = useState<Array<[string, string]>>([]),
+    [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]),
     [hydrated, setHydrated] = useState(false),
     [authReady, setAuthReady] = useState(false),
     [authUser, setAuthUser] = useState<any>(null),
@@ -489,6 +499,24 @@ export default function App() {
     }, 500);
     return () => window.clearTimeout(syncTimer);
   }, [hydrated, authUser, stage, tab, logs, freshStart, profile, prefs, following, customCategories]);
+  useEffect(() => {
+    if (!hydrated || !authUser || stage !== "app" || demoMode) return;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        user_id: authUser.id,
+        display_name: profile.displayName,
+        username: profile.username,
+        avatar_url: profile.avatarUrl?.startsWith("data:") ? null : profile.avatarUrl,
+        leaderboard_enabled: Boolean(prefs[4]),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id" });
+      if (profileError) return;
+      const { data, error } = await supabase.rpc("get_leaderboard", { leaderboard_period: "this_month" });
+      if (!error && active) setLeaderboard((data || []) as LeaderboardEntry[]);
+    }, 700);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [hydrated, authUser?.id, stage, demoMode, profile.displayName, profile.username, profile.avatarUrl, prefs, logs]);
   const trackedLogs = logs.filter((log) => !log.dateKey || new Date(`${log.dateKey}T00:00:00`).getMonth() === new Date().getMonth());
   const wins =
       (freshStart ? 0 : 3390) +
@@ -599,6 +627,8 @@ export default function App() {
                 removeLog,
                 freshStart,
                 profile,
+                leaderboard,
+                authUserId: authUser?.id,
               }}
             />
           ) : tab === "insights" ? (
@@ -634,7 +664,7 @@ export default function App() {
         )}
       </AnimatePresence>
       <AnimatePresence>
-        {board && <Leaderboard close={() => setBoard(false)} following={following} setFollowing={setFollowing} freshStart={freshStart} profile={profile} net={net} logs={logs} />}
+        {board && <Leaderboard close={() => setBoard(false)} following={following} setFollowing={setFollowing} freshStart={freshStart} profile={profile} net={net} logs={logs} leaderboard={leaderboard} authUserId={authUser?.id} />}
       </AnimatePresence>
       <AnimatePresence>
         {share && <Share log={share} net={net} close={() => setShare(null)} />}
@@ -669,6 +699,8 @@ function HomeView({
   removeLog,
   freshStart,
   profile,
+  leaderboard,
+  authUserId,
 }: any) {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [streakDay, setStreakDay] = useState<number | null>(null);
@@ -676,6 +708,8 @@ function HomeView({
   const isEmpty = freshStart && logs.length === 0;
   const streak = freshStart ? (logs.length ? 1 : 0) : 12;
   const todayIndex = (new Date().getDay() + 6) % 7;
+  const liveLeaderboard: LeaderboardEntry[] = freshStart && leaderboard.length ? leaderboard : [{ rank: 1, user_id: authUserId, display_name: profile.displayName, username: profile.username, avatar_url: profile.avatarUrl, net, streak }];
+  const ownLeaderboardEntry = liveLeaderboard.find((entry) => entry.user_id === authUserId) || liveLeaderboard[0];
   if (isEmpty) {
     return (
       <div className="page first-home">
@@ -817,19 +851,17 @@ function HomeView({
             GLOBAL THIS MONTH
           </label>
           <h2>
-            YOU’RE <strong>{freshStart ? "#1" : "#38"}</strong>
+            YOU’RE <strong>{freshStart ? `#${ownLeaderboardEntry.rank}` : "#38"}</strong>
             <ArrowUpRight />
           </h2>
-          {(freshStart ? [
-            [1, profile.displayName, signedMoney(net)],
-          ] : [
+          {(freshStart ? liveLeaderboard.slice(0, 5).map((entry) => [Number(entry.rank), entry.display_name, signedMoney(Number(entry.net)), entry.user_id]) : [
             [36, "Maya", "+8.1K"],
             [37, "Chris", "+6.4K"],
             [38, "Damian", "+4.3K"],
             [39, "Noah", "+4.1K"],
             [40, "Alex", "+3.8K"],
           ]).map((x) => (
-            <div className={x[0] === (freshStart ? 1 : 38) ? "me" : ""} key={x[0]}>
+            <div className={freshStart ? x[3] === authUserId ? "me" : "" : x[0] === 38 ? "me" : ""} key={`${x[0]}-${x[1]}`}>
               <b>#{x[0]}</b>
               <span>{x[1]}</span>
               <em>{x[2]}</em>
@@ -1720,14 +1752,22 @@ function Profile({ net, wins, losses, logs, freshStart, profile, prefs, setPrefs
     </div>
   );
 }
-function Leaderboard({ close, following, setFollowing, freshStart, profile, net, logs }: any) {
+function Leaderboard({ close, following, setFollowing, freshStart, profile, net, logs, leaderboard, authUserId }: any) {
   const [view, setView] = useState("GLOBAL"),
     [period, setPeriod] = useState("THIS MONTH"),
-    [selectedUser, setSelectedUser] = useState<any>(null);
+    [selectedUser, setSelectedUser] = useState<any>(null),
+    [liveEntries, setLiveEntries] = useState<LeaderboardEntry[]>(leaderboard);
+  useEffect(() => {
+    if (!freshStart) return;
+    let active = true;
+    supabase.rpc("get_leaderboard", { leaderboard_period: period === "ALL TIME" ? "all_time" : "this_month" })
+      .then(({ data, error }) => { if (!error && active) setLiveEntries((data || []) as LeaderboardEntry[]); });
+    return () => { active = false; };
+  }, [freshStart, period]);
   const users = useMemo(
-    () => freshStart ? [
-      [1, profile.displayName, profile.username, signedMoney(net), logs.length ? 1 : 0],
-    ] : [
+    () => freshStart ? (liveEntries.length ? liveEntries.map((entry) => [Number(entry.rank), entry.display_name, entry.username, signedMoney(Number(entry.net)), Number(entry.streak), entry.user_id]) : [
+      [1, profile.displayName, profile.username, signedMoney(net), logs.length ? 1 : 0, authUserId],
+    ]) : [
       [1, "Zee", "zee", "+24,800", 28],
       [2, "Aria", "ariaup", "+18,420", 41],
       [3, "Kofi", "kofiworks", "+14,900", 19],
@@ -1737,8 +1777,9 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
       [39, "Noah", "noah", "+4,110", 7],
       [40, "Alex", "alex", "+3,820", 22],
     ],
-    [freshStart, profile.displayName, profile.username, net, logs.length],
+    [freshStart, liveEntries, profile.displayName, profile.username, net, logs.length, authUserId],
   );
+  const visibleUsers = view === "FRIENDS" && freshStart ? users.filter((user) => following.includes(String(user[1]))) : users;
   return (
     <motion.div
       className="leaderboard"
@@ -1791,7 +1832,7 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
           </button>
         </div>
         <div className="top3">
-          {users.slice(0, 3).map((u, i) => (
+          {visibleUsers.slice(0, 3).map((u, i) => (
             <div className={`top n${i + 1}`} key={u[0]}>
               <span>#{u[0]}</span>
               <i>{String(u[1])[0]}</i>
@@ -1805,12 +1846,12 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
           ))}
         </div>
         <section className="ranking">
-          {users.slice(3).map((u) => (
+          {visibleUsers.slice(3).map((u) => (
             <motion.div
               layout
-              className={u[1] === "Damian" ? "me" : ""}
+              className={freshStart ? u[5] === authUserId ? "me" : "" : u[1] === "Damian" ? "me" : ""}
               key={u[1]}
-              onClick={() => u[1] !== "Damian" && setSelectedUser(u)}
+              onClick={() => (freshStart ? u[5] !== authUserId : u[1] !== "Damian") && setSelectedUser(u)}
             >
               <b>#{u[0]}</b>
               <i>{String(u[1])[0]}</i>
@@ -1826,6 +1867,7 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
             </motion.div>
           ))}
         </section>
+        {visibleUsers.length === 0 && <div className="leader-empty"><UserPlus /><b>No friends here yet</b><span>Follow UPBY users to build your Friends leaderboard.</span></div>}
         {!freshStart && <div className="pinned-rank"><b>#38</b><span>D · Damian</span><strong>+4,280</strong><em><TrendingUp /> 4</em></div>}
       </motion.main>
       <AnimatePresence>
