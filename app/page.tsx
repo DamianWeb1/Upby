@@ -1655,15 +1655,28 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     }
     if (!demoMode && authUser) {
       if (avatarFile) {
-        const { error: uploadError } = await supabase.storage.from("avatars").upload(`${authUser.id}/avatar`, avatarFile, { upsert: true, contentType: avatarFile.type, cacheControl: "3600" });
+        const extension = avatarFile.type === "image/png" ? "png" : avatarFile.type === "image/webp" ? "webp" : "jpg";
+        const avatarPath = `${authUser.id}/avatar-${Date.now()}.${extension}`;
+        const { error: uploadError } = await supabase.storage.from("avatars").upload(avatarPath, avatarFile, { contentType: avatarFile.type, cacheControl: "31536000" });
         if (uploadError) { setEditError(uploadError.message); setSavingProfile(false); return; }
-        const { data } = supabase.storage.from("avatars").getPublicUrl(`${authUser.id}/avatar`);
-        nextProfile = { ...nextProfile, avatarUrl: `${data.publicUrl}?v=${Date.now()}` };
+        const { data } = supabase.storage.from("avatars").getPublicUrl(avatarPath);
+        const imageCheck = await fetch(data.publicUrl, { cache: "no-store" });
+        if (!imageCheck.ok) { setEditError("The photo uploaded but could not be opened. Please try again."); setSavingProfile(false); return; }
+        nextProfile = { ...nextProfile, avatarUrl: data.publicUrl };
       } else if (profile.avatarUrl && !nextProfile.avatarUrl) {
-        const { error: removeError } = await supabase.storage.from("avatars").remove([`${authUser.id}/avatar`]);
-        if (removeError) { setEditError(removeError.message); setSavingProfile(false); return; }
+        nextProfile = { ...nextProfile, avatarUrl: null };
       }
       const savedAvatarUrl = nextProfile.avatarUrl?.startsWith("data:") ? null : nextProfile.avatarUrl;
+      const { error: profileError } = await supabase.from("profiles").upsert({
+        user_id: authUser.id,
+        display_name: nextProfile.displayName,
+        username: nextProfile.username,
+        avatar_url: savedAvatarUrl,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "user_id" });
+      if (profileError) { setEditError(profileError.message); setSavingProfile(false); return; }
+      setProfile(nextProfile);
+      setDraftProfile(nextProfile);
       const { error } = await supabase.auth.updateUser({ data: {
         display_name: nextProfile.displayName,
         username: nextProfile.username,
@@ -1673,14 +1686,6 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
         onboarding_complete: true,
       } });
       if (error) { setEditError(error.message); setSavingProfile(false); return; }
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        user_id: authUser.id,
-        display_name: nextProfile.displayName,
-        username: nextProfile.username,
-        avatar_url: savedAvatarUrl,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
-      if (profileError) { setEditError(profileError.message); setSavingProfile(false); return; }
     }
     setProfile(nextProfile);
     setSavingProfile(false);
