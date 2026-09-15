@@ -65,7 +65,7 @@ type LogRow = {
   note: string | null;
   screenshot: boolean;
 };
-type ProfileData = { displayName: string; username: string; xProfile: string; avatarUrl: string | null };
+type ProfileData = { displayName: string; username: string; xProfile: string; avatarUrl: string | null; bio?: string };
 type LeaderboardEntry = {
   rank: number | string;
   user_id: string;
@@ -88,7 +88,7 @@ type PersistedState = {
   customCategories: Array<[string, string]>;
 };
 const STORAGE_KEY = "upby:account:v2";
-const DEFAULT_PROFILE: ProfileData = { displayName: "Damian", username: "damian", xProfile: "damian__web", avatarUrl: null };
+const DEFAULT_PROFILE: ProfileData = { displayName: "Damian", username: "damian", xProfile: "damian__web", avatarUrl: null, bio: "" };
 const DEFAULT_PREFS = [1, 1, 1, 0, 1];
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -634,7 +634,7 @@ export default function App() {
           ) : tab === "insights" ? (
             <Insights {...{ net, wins, losses, logs, freshStart }} />
           ) : (
-            <Profile {...{ net, wins, losses, logs, freshStart, profile, prefs, setPrefs, authUser, demoMode, signOut }} />
+            <Profile {...{ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut }} />
           )}
         </motion.main>
       </AnimatePresence>
@@ -1612,12 +1612,42 @@ function RecapStory({ period, recapOverride }: { period: string; recapOverride?:
     </div>
   );
 }
-function Profile({ net, wins, losses, logs, freshStart, profile, prefs, setPrefs, authUser, demoMode, signOut }: any) {
+function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut }: any) {
   const [settings, setSettings] = useState(false),
-    [publicPreview, setPublicPreview] = useState(false);
+    [publicPreview, setPublicPreview] = useState(false),
+    [editingProfile, setEditingProfile] = useState(false),
+    [draftProfile, setDraftProfile] = useState<ProfileData>(profile),
+    [editError, setEditError] = useState("");
   const streak = freshStart ? (logs.length ? 1 : 0) : 12;
   const earned = freshStart ? earnedFrom(logs, net) : ["FIRST WIN", "30 DAY STREAK", "$5K MONTH", "TOP 100"];
   const selectedAchievements = freshStart ? earned.slice(0, 4) : earned;
+  const openProfileEditor = () => { setDraftProfile(profile); setEditError(""); setEditingProfile(true); };
+  const saveProfile = async () => {
+    const nextProfile = {
+      ...draftProfile,
+      displayName: draftProfile.displayName.trim(),
+      username: draftProfile.username.toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24),
+      xProfile: draftProfile.xProfile.replace(/^@/, "").trim(),
+      bio: draftProfile.bio?.trim().slice(0, 160) || "",
+    };
+    if (nextProfile.displayName.length < 2 || nextProfile.username.length < 3) {
+      setEditError("Add a display name and a username with at least 3 characters.");
+      return;
+    }
+    if (!demoMode && authUser) {
+      const { error } = await supabase.auth.updateUser({ data: {
+        display_name: nextProfile.displayName,
+        username: nextProfile.username,
+        x_profile: nextProfile.xProfile,
+        bio: nextProfile.bio,
+        avatar_url: nextProfile.avatarUrl?.startsWith("data:") ? null : nextProfile.avatarUrl,
+        onboarding_complete: true,
+      } });
+      if (error) { setEditError(error.message); return; }
+    }
+    setProfile(nextProfile);
+    setEditingProfile(false);
+  };
   return (
     <div className={publicPreview ? "page profile public-preview" : "page profile"}>
       <button className="preview-toggle" onClick={() => setPublicPreview(!publicPreview)}>
@@ -1635,10 +1665,35 @@ function Profile({ net, wins, losses, logs, freshStart, profile, prefs, setPrefs
           <h1>{profile.displayName}</h1>
           <b>@{profile.username}</b>
           {profile.xProfile && <a href={`https://x.com/${profile.xProfile.replace(/^@/, "")}`}>𝕏 @{profile.xProfile.replace(/^@/, "")} <ArrowUpRight /></a>}
-          <p>Building on the internet. Tracking every step.</p>
+          <p>{profile.bio || "Building on the internet. Tracking every step."}</p>
         </div>
-        {freshStart ? <button className="public" onClick={() => setPublicPreview(true)}>VIEW PUBLIC PROFILE<ArrowUpRight /></button> : <a className="public" href="/damian">VIEW PUBLIC PROFILE<ArrowUpRight /></a>}
+        <div className="profile-actions">
+          <button className="edit-profile" onClick={openProfileEditor}><Edit3 />EDIT PROFILE</button>
+          {freshStart ? <button className="public" onClick={() => setPublicPreview(true)}>VIEW PUBLIC PROFILE<ArrowUpRight /></button> : <a className="public" href="/damian">VIEW PUBLIC PROFILE<ArrowUpRight /></a>}
+        </div>
       </section>
+      <AnimatePresence>
+        {editingProfile && (
+          <motion.div className="backdrop center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setEditingProfile(false)}>
+            <motion.section className="profile-editor" initial={{ y: 28, scale: .96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 20, opacity: 0 }} onMouseDown={(event) => event.stopPropagation()}>
+              <header><div><span>YOUR PROFILE</span><h2>Edit profile</h2></div><button onClick={() => setEditingProfile(false)}><X /></button></header>
+              <div className="profile-photo-edit">
+                <div>{draftProfile.avatarUrl ? <img src={draftProfile.avatarUrl} alt="Profile preview" /> : draftProfile.displayName.slice(0, 1).toUpperCase()}</div>
+                <label><Camera />CHANGE PHOTO<input type="file" accept="image/*" onChange={(event) => { const file = event.target.files?.[0]; if (!file) return; const reader = new FileReader(); reader.onload = () => setDraftProfile((current) => ({ ...current, avatarUrl: typeof reader.result === "string" ? reader.result : null })); reader.readAsDataURL(file); }} /></label>
+                {draftProfile.avatarUrl && <button onClick={() => setDraftProfile((current) => ({ ...current, avatarUrl: null }))}>REMOVE</button>}
+              </div>
+              <div className="profile-fields">
+                <label><span>DISPLAY NAME</span><input value={draftProfile.displayName} maxLength={40} onChange={(event) => setDraftProfile((current) => ({ ...current, displayName: event.target.value }))} /></label>
+                <label><span>USERNAME</span><div className="edit-username"><b>@</b><input value={draftProfile.username} maxLength={24} onChange={(event) => setDraftProfile((current) => ({ ...current, username: event.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "") }))} /></div></label>
+                <label><span>X ACCOUNT</span><div className="edit-username"><b>@</b><input value={draftProfile.xProfile} maxLength={30} placeholder="yourhandle" onChange={(event) => setDraftProfile((current) => ({ ...current, xProfile: event.target.value.replace(/^@/, "") }))} /></div></label>
+                <label className="bio-field"><span>BIO</span><textarea value={draftProfile.bio || ""} maxLength={160} placeholder="Tell people what you do" onChange={(event) => setDraftProfile((current) => ({ ...current, bio: event.target.value }))} /><small>{draftProfile.bio?.length || 0}/160</small></label>
+              </div>
+              {editError && <p className="profile-edit-error">{editError}</p>}
+              <footer><button className="cancel" onClick={() => setEditingProfile(false)}>CANCEL</button><button className="save" onClick={saveProfile}><Check />SAVE CHANGES</button></footer>
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {settings && (
           <motion.section
