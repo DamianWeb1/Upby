@@ -639,7 +639,7 @@ export default function App() {
         )}
       </AnimatePresence>
       <AnimatePresence>
-        {board && <Leaderboard close={() => setBoard(false)} following={following} setFollowing={setFollowing} />}
+        {board && <Leaderboard close={() => setBoard(false)} following={following} setFollowing={setFollowing} freshStart={freshStart} profile={profile} net={net} logs={logs} />}
       </AnimatePresence>
       <AnimatePresence>
         {share && <Share log={share} net={net} close={() => setShare(null)} />}
@@ -822,15 +822,11 @@ function HomeView({
             GLOBAL THIS MONTH
           </label>
           <h2>
-            YOU’RE <strong>{freshStart ? "#184" : "#38"}</strong>
+            YOU’RE <strong>{freshStart ? "#1" : "#38"}</strong>
             <ArrowUpRight />
           </h2>
           {(freshStart ? [
-            [182, "Nia", "+210"],
-            [183, "Owen", "+175"],
-            [184, "Damian", net >= 0 ? `+${money(net)}` : `-${money(Math.abs(net))}`],
-            [185, "Liam", "+95"],
-            [186, "Zee", "+80"],
+            [1, profile.displayName, signedMoney(net)],
           ] : [
             [36, "Maya", "+8.1K"],
             [37, "Chris", "+6.4K"],
@@ -838,7 +834,7 @@ function HomeView({
             [39, "Noah", "+4.1K"],
             [40, "Alex", "+3.8K"],
           ]).map((x) => (
-            <div className={x[0] === (freshStart ? 184 : 38) ? "me" : ""} key={x[0]}>
+            <div className={x[0] === (freshStart ? 1 : 38) ? "me" : ""} key={x[0]}>
               <b>#{x[0]}</b>
               <span>{x[1]}</span>
               <em>{x[2]}</em>
@@ -1729,12 +1725,14 @@ function Profile({ net, wins, losses, logs, freshStart, profile, prefs, setPrefs
     </div>
   );
 }
-function Leaderboard({ close, following, setFollowing }: any) {
+function Leaderboard({ close, following, setFollowing, freshStart, profile, net, logs }: any) {
   const [view, setView] = useState("GLOBAL"),
     [period, setPeriod] = useState("THIS MONTH"),
     [selectedUser, setSelectedUser] = useState<any>(null);
   const users = useMemo(
-    () => [
+    () => freshStart ? [
+      [1, profile.displayName, profile.username, signedMoney(net), logs.length ? 1 : 0],
+    ] : [
       [1, "Zee", "zee", "+24,800", 28],
       [2, "Aria", "ariaup", "+18,420", 41],
       [3, "Kofi", "kofiworks", "+14,900", 19],
@@ -1744,7 +1742,7 @@ function Leaderboard({ close, following, setFollowing }: any) {
       [39, "Noah", "noah", "+4,110", 7],
       [40, "Alex", "alex", "+3,820", 22],
     ],
-    [],
+    [freshStart, profile.displayName, profile.username, net, logs.length],
   );
   return (
     <motion.div
@@ -1833,7 +1831,7 @@ function Leaderboard({ close, following, setFollowing }: any) {
             </motion.div>
           ))}
         </section>
-        <div className="pinned-rank"><b>#38</b><span>D · Damian</span><strong>+4,280</strong><em><TrendingUp /> 4</em></div>
+        {!freshStart && <div className="pinned-rank"><b>#38</b><span>D · Damian</span><strong>+4,280</strong><em><TrendingUp /> 4</em></div>}
       </motion.main>
       <AnimatePresence>
         {selectedUser && (
