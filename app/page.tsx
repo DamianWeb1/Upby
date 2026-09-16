@@ -355,6 +355,7 @@ export default function App() {
     [following, setFollowing] = useState<string[]>(["Maya"]),
     [customCategories, setCustomCategories] = useState<Array<[string, string]>>([]),
     [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]),
+    [followerCount, setFollowerCount] = useState(0),
     [hydrated, setHydrated] = useState(false),
     [authReady, setAuthReady] = useState(false),
     [authUser, setAuthUser] = useState<any>(null),
@@ -442,7 +443,7 @@ export default function App() {
 
         const { data: savedProfile, error: savedProfileError } = await supabase
           .from("profiles")
-          .select("display_name,username,avatar_url")
+          .select("display_name,username,avatar_url,bio,x_profile")
           .eq("user_id", authUser.id)
           .maybeSingle();
         if (savedProfileError) throw savedProfileError;
@@ -452,7 +453,20 @@ export default function App() {
             displayName: savedProfile.display_name || current.displayName,
             username: savedProfile.username || current.username,
             avatarUrl: savedProfile.avatar_url,
+            bio: savedProfile.bio || current.bio,
+            xProfile: savedProfile.x_profile || current.xProfile,
           }));
+        }
+
+        const [{ data: followedRows, error: followsError }, { count: followers, error: followersError }] = await Promise.all([
+          supabase.from("follows").select("followed_id").eq("follower_id", authUser.id),
+          supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUser.id),
+        ]);
+        if (followsError) throw followsError;
+        if (followersError) throw followersError;
+        if (active) {
+          setFollowing((followedRows || []).map((row: { followed_id: string }) => row.followed_id));
+          setFollowerCount(followers || 0);
         }
 
         const { data: logRows, error: logsError } = await supabase
@@ -523,6 +537,12 @@ export default function App() {
         display_name: profile.displayName,
         username: profile.username,
         avatar_url: profile.avatarUrl?.startsWith("data:") ? null : profile.avatarUrl,
+        bio: profile.bio || "",
+        x_profile: profile.xProfile || "",
+        show_totals: Boolean(prefs[0]),
+        show_logs: Boolean(prefs[1]),
+        show_losses: Boolean(prefs[2]),
+        show_screenshots: Boolean(prefs[3]),
         leaderboard_enabled: Boolean(prefs[4]),
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
@@ -531,7 +551,7 @@ export default function App() {
       if (!error && active) setLeaderboard((data || []) as LeaderboardEntry[]);
     }, 700);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [hydrated, authUser?.id, stage, demoMode, profile.displayName, profile.username, profile.avatarUrl, prefs, logs]);
+  }, [hydrated, authUser?.id, stage, demoMode, profile.displayName, profile.username, profile.avatarUrl, profile.bio, profile.xProfile, prefs, logs]);
   const trackedLogs = logs.filter((log) => !log.dateKey || new Date(`${log.dateKey}T00:00:00`).getMonth() === new Date().getMonth());
   const wins =
       (freshStart ? 0 : 3390) +
@@ -649,7 +669,7 @@ export default function App() {
           ) : tab === "insights" ? (
             <Insights {...{ net, wins, losses, logs, freshStart }} />
           ) : (
-            <Profile {...{ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut }} />
+            <Profile {...{ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut, followingCount: following.length, followerCount }} />
           )}
         </motion.main>
       </AnimatePresence>
@@ -1627,7 +1647,7 @@ function RecapStory({ period, recapOverride }: { period: string; recapOverride?:
     </div>
   );
 }
-function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut }: any) {
+function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut, followingCount, followerCount }: any) {
   const [settings, setSettings] = useState(false),
     [publicPreview, setPublicPreview] = useState(false),
     [editingProfile, setEditingProfile] = useState(false),
@@ -1672,6 +1692,13 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
         display_name: nextProfile.displayName,
         username: nextProfile.username,
         avatar_url: savedAvatarUrl,
+        bio: nextProfile.bio,
+        x_profile: nextProfile.xProfile,
+        show_totals: Boolean(prefs[0]),
+        show_logs: Boolean(prefs[1]),
+        show_losses: Boolean(prefs[2]),
+        show_screenshots: Boolean(prefs[3]),
+        leaderboard_enabled: Boolean(prefs[4]),
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
       if (profileError) { setEditError(profileError.message); setSavingProfile(false); return; }
@@ -1712,7 +1739,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
         </div>
         <div className="profile-actions">
           <button className="edit-profile" onClick={openProfileEditor}><Edit3 />EDIT PROFILE</button>
-          {freshStart ? <button className="public" onClick={() => setPublicPreview(true)}>VIEW PUBLIC PROFILE<ArrowUpRight /></button> : <a className="public" href="/damian">VIEW PUBLIC PROFILE<ArrowUpRight /></a>}
+          <a className="public" href={`/${profile.username}`}>VIEW PUBLIC PROFILE<ArrowUpRight /></a>
         </div>
       </section>
       <AnimatePresence>
@@ -1788,11 +1815,11 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
       </section>
       <section className="social">
         <div>
-          <b>{freshStart ? 0 : 248}</b>
+          <b>{freshStart ? followingCount : 248}</b>
           <span>FOLLOWING</span>
         </div>
         <div>
-          <b>{freshStart ? 0 : "1,842"}</b>
+          <b>{freshStart ? followerCount : "1,842"}</b>
           <span>FOLLOWERS</span>
         </div>
         <button>
@@ -1858,13 +1885,14 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
   useEffect(() => {
     if (!freshStart) return;
     let active = true;
-    supabase.rpc("get_leaderboard", { leaderboard_period: period === "ALL TIME" ? "all_time" : "this_month" })
+    supabase.rpc(view === "FRIENDS" ? "get_friends_leaderboard" : "get_leaderboard", { leaderboard_period: period === "ALL TIME" ? "all_time" : "this_month" })
       .then(({ data, error }) => { if (!error && active) setLiveEntries((data || []) as LeaderboardEntry[]); });
     return () => { active = false; };
-  }, [freshStart, period]);
+  }, [freshStart, period, view, following]);
   const users = useMemo(
-    () => freshStart ? (liveEntries.length ? liveEntries.map((entry) => [Number(entry.rank), entry.display_name, entry.username, signedMoney(Number(entry.net)), Number(entry.streak), entry.user_id]) : [
-      [1, profile.displayName, profile.username, signedMoney(net), logs.length ? 1 : 0, authUserId],
+    () => freshStart ? (liveEntries.length ? liveEntries.map((entry) => [Number(entry.rank), entry.display_name, entry.username, signedMoney(Number(entry.net)), Number(entry.streak), entry.user_id, entry.avatar_url]) : view === "GLOBAL" ? [
+      [1, profile.displayName, profile.username, signedMoney(net), logs.length ? 1 : 0, authUserId, profile.avatarUrl],
+    ] : [
     ]) : [
       [1, "Zee", "zee", "+24,800", 28],
       [2, "Aria", "ariaup", "+18,420", 41],
@@ -1875,9 +1903,25 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
       [39, "Noah", "noah", "+4,110", 7],
       [40, "Alex", "alex", "+3,820", 22],
     ],
-    [freshStart, liveEntries, profile.displayName, profile.username, net, logs.length, authUserId],
+    [freshStart, liveEntries, profile.displayName, profile.username, profile.avatarUrl, net, logs.length, authUserId, view],
   );
-  const visibleUsers = view === "FRIENDS" && freshStart ? users.filter((user) => following.includes(String(user[1]))) : users;
+  const visibleUsers = users;
+  const toggleFollow = async (user: any) => {
+    if (!freshStart) {
+      const demoKey = String(user[1]);
+      setFollowing((items: string[]) => items.includes(demoKey) ? items.filter((id: string) => id !== demoKey) : [...items, demoKey]);
+      return;
+    }
+    const targetId = String(user[5]);
+    if (!targetId || targetId === authUserId) return;
+    const alreadyFollowing = following.includes(targetId);
+    setFollowing((items: string[]) => alreadyFollowing ? items.filter((id: string) => id !== targetId) : [...items, targetId]);
+    const request = alreadyFollowing
+      ? supabase.from("follows").delete().eq("follower_id", authUserId).eq("followed_id", targetId)
+      : supabase.from("follows").insert({ follower_id: authUserId, followed_id: targetId });
+    const { error } = await request;
+    if (error) setFollowing((items: string[]) => alreadyFollowing ? [...items, targetId] : items.filter((id: string) => id !== targetId));
+  };
   return (
     <motion.div
       className="leaderboard"
@@ -1931,9 +1975,13 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
         </div>
         <div className="top3">
           {visibleUsers.slice(0, 3).map((u, i) => (
-            <div className={`top n${i + 1}`} key={u[0]}>
+            <div
+              className={`top n${i + 1}`}
+              key={u[0]}
+              onClick={() => (freshStart ? u[5] !== authUserId : u[1] !== "Damian") && setSelectedUser(u)}
+            >
               <span>#{u[0]}</span>
-              <i>{String(u[1])[0]}</i>
+              <i>{u[6] ? <img src={String(u[6])} alt="" /> : String(u[1])[0]}</i>
               <b>{u[1]}</b>
               <strong>{u[3]}</strong>
               <small>
@@ -1952,7 +2000,7 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
               onClick={() => (freshStart ? u[5] !== authUserId : u[1] !== "Damian") && setSelectedUser(u)}
             >
               <b>#{u[0]}</b>
-              <i>{String(u[1])[0]}</i>
+              <i>{u[6] ? <img src={String(u[6])} alt="" /> : String(u[1])[0]}</i>
               <p>
                 <strong>{u[1]}</strong>
                 <small>@{u[2]}</small>
@@ -1973,15 +2021,16 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
           <motion.div className="leader-profile" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedUser(null)}>
             <motion.section initial={{ y: 40, scale: .94 }} animate={{ y: 0, scale: 1 }} onClick={(e) => e.stopPropagation()}>
               <button className="close" onClick={() => setSelectedUser(null)}><X /></button>
-              <i>{String(selectedUser[1])[0]}</i>
+              <i>{selectedUser[6] ? <img src={String(selectedUser[6])} alt="" /> : String(selectedUser[1])[0]}</i>
               <span>UPBY MEMBER</span>
               <h2>{selectedUser[1]}</h2>
               <p>@{selectedUser[2]}</p>
               <strong>{selectedUser[3]} this month</strong>
+              <a className="leader-public-link" href={`/${selectedUser[2]}`}>VIEW PUBLIC PROFILE <ArrowUpRight /></a>
               <button
-                className={following.includes(String(selectedUser[1])) ? "follow following" : "follow"}
-                onClick={() => setFollowing((items: string[]) => items.includes(String(selectedUser[1])) ? items.filter((x: string) => x !== String(selectedUser[1])) : [...items, String(selectedUser[1])])}
-              >                <UserPlus /> {following.includes(String(selectedUser[1])) ? "FOLLOWING" : "FOLLOW"}
+                className={following.includes(String(freshStart ? selectedUser[5] : selectedUser[1])) ? "follow following" : "follow"}
+                onClick={() => toggleFollow(selectedUser)}
+              >                <UserPlus /> {following.includes(String(freshStart ? selectedUser[5] : selectedUser[1])) ? "FOLLOWING" : "FOLLOW"}
               </button>
             </motion.section>
           </motion.div>
