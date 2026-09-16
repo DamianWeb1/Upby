@@ -2,6 +2,8 @@
 
 A mobile-first social progress tracker for logging wins and losses.
 
+Production: https://getupby.vercel.app
+
 ## Local setup
 
 1. Copy `.env.example` to `.env.local`.
