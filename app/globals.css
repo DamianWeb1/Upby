@@ -3278,6 +3278,160 @@ textarea:focus-visible {
   width: 15px;
 }
 
+.auth-terms a {
+  color: var(--ink);
+  font-weight: 850;
+}
+
+.account-links {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 14px;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .8px;
+}
+
+.account-links a {
+  color: var(--muted);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.account-links a:hover {
+  color: var(--blue);
+}
+
+.account-links svg {
+  width: 13px;
+  height: 13px;
+}
+
+.public-footer {
+  border-top: 1px solid var(--line);
+  margin-top: 60px;
+  padding-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.public-footer > a {
+  color: var(--ink);
+  letter-spacing: 2px;
+}
+
+.public-footer nav {
+  display: flex;
+  gap: 18px;
+}
+
+.public-footer a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.legal-page {
+  width: min(760px, calc(100% - 36px));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 38px 0 70px;
+  color: var(--ink);
+}
+
+.legal-back {
+  display: inline-flex;
+  color: var(--ink);
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: 950;
+  letter-spacing: 2px;
+  margin-bottom: 68px;
+}
+
+.legal-page > span {
+  display: block;
+  font-size: 10px;
+  font-weight: 950;
+  letter-spacing: 1.5px;
+  color: var(--blue);
+}
+
+.legal-page h1 {
+  font-size: clamp(46px, 8vw, 76px);
+  line-height: .95;
+  letter-spacing: -4px;
+  margin: 10px 0 20px;
+}
+
+.legal-page > p {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin-bottom: 48px;
+}
+
+.legal-page section {
+  border-top: 1px solid var(--line);
+  padding: 25px 0;
+}
+
+.legal-page h2 {
+  font-size: 21px;
+  margin: 0 0 8px;
+}
+
+.legal-page section p {
+  color: var(--muted);
+  line-height: 1.7;
+  margin: 0;
+}
+
+.legal-page section a {
+  color: var(--blue);
+  font-weight: 850;
+}
+
+.legal-links {
+  display: flex;
+  gap: 18px;
+  border-top: 2px solid var(--ink);
+  padding-top: 22px;
+  margin-top: 28px;
+}
+
+.legal-links a {
+  color: var(--ink);
+  font-weight: 900;
+}
+
+@media (max-width: 760px) {
+  .account-links {
+    flex-wrap: wrap;
+  }
+
+  .public-footer {
+    margin-top: 42px;
+  }
+
+  .legal-page {
+    padding-top: calc(24px + env(safe-area-inset-top));
+  }
+
+  .legal-back {
+    margin-bottom: 48px;
+  }
+
+  .legal-page h1 {
+    letter-spacing: -2.5px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *:before,

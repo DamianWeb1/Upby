@@ -132,6 +132,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         <span>RECENT PUBLIC LOGS</span>
         {profile.logs.length ? profile.logs.map((log) => <article key={log.id}><i className={log.type}>{log.type.toUpperCase()}</i><div><b>{log.category}</b><p>{log.title}</p></div><strong>{log.amount === null ? "PRIVATE" : `${log.type === "win" ? "+" : "-"}${money(Number(log.amount))}`}</strong><time>{log.date_label}</time></article>) : <div className="public-feed-empty"><b>No public logs</b><p>This member has not shared any logs yet.</p></div>}
       </section>
+      <footer className="public-footer"><a href="/">UPBY</a><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Feedback</a></nav></footer>
     </main>
   );
 }

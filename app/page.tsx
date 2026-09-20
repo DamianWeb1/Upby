@@ -246,7 +246,7 @@ function AuthWelcome({ onDemo }: { onDemo: () => void }) {
         </div>
         <div className="auth-divider"><span>OR</span></div>
         <button className="demo-button" onClick={onDemo}>Explore the demo <ArrowUpRight /></button>
-        <p className="auth-terms">By continuing, you agree to UPBY’s Terms and Privacy Policy.</p>
+        <p className="auth-terms">By continuing, you agree to UPBY’s <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
       </section>
     </main>
   );
@@ -1796,6 +1796,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
               <div><b>{demoMode ? "Demo session" : authUser?.email}</b><span>{demoMode ? "Sample data mode" : "Signed in securely with Supabase"}</span></div>
               <button onClick={signOut}><LogOut />{demoMode ? "EXIT DEMO" : "SIGN OUT"}</button>
             </div>
+            <nav className="account-links"><a href="/privacy">PRIVACY</a><a href="/terms">TERMS</a><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">SEND FEEDBACK <ArrowUpRight /></a></nav>
           </motion.section>
         )}
       </AnimatePresence>
