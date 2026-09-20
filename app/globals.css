@@ -3310,6 +3310,212 @@ textarea:focus-visible {
   height: 13px;
 }
 
+.account-tools {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.account-tools button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--paper);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.account-tools button:hover {
+  border-color: var(--ink);
+}
+
+.account-tools button.danger {
+  color: #8d2e29;
+  background: #fff0ef;
+  border-color: #e8b7b3;
+}
+
+.account-tools svg {
+  width: 15px;
+  height: 15px;
+}
+
+.account-modal {
+  width: min(520px, calc(100vw - 28px));
+  max-height: min(760px, calc(100vh - 28px));
+  overflow-y: auto;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 24px;
+  box-shadow: 8px 8px 0 var(--ink);
+  padding: 24px;
+}
+
+.account-modal > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.account-modal > header span,
+.account-modal > label > span {
+  display: block;
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 1.3px;
+}
+
+.account-modal > header h2 {
+  font-size: 34px;
+  letter-spacing: -1.5px;
+  margin: 3px 0 0;
+}
+
+.account-modal > header > button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  display: grid;
+  place-items: center;
+}
+
+.account-modal > header svg {
+  width: 18px;
+}
+
+.feedback-types {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+
+.feedback-types button {
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: transparent;
+  padding: 8px 12px;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.feedback-types button.active {
+  color: white;
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+.account-modal > label {
+  display: block;
+  position: relative;
+}
+
+.account-modal textarea,
+.account-modal input {
+  width: 100%;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  color: var(--ink);
+  padding: 13px;
+  margin-top: 7px;
+  font: inherit;
+  outline: none;
+}
+
+.account-modal textarea {
+  min-height: 150px;
+  resize: vertical;
+}
+
+.account-modal textarea:focus,
+.account-modal input:focus {
+  border-color: var(--blue);
+}
+
+.account-modal label small {
+  display: block;
+  text-align: right;
+  color: var(--muted);
+  font-size: 9px;
+  margin-top: 5px;
+}
+
+.account-modal-status {
+  color: #175f3e;
+  background: #def7e9;
+  border: 1px solid #a8dfbf;
+  border-radius: 10px;
+  padding: 9px 11px;
+  font-size: 11px;
+}
+
+.account-modal-status.error {
+  color: #8d2e29;
+  background: #fff0ef;
+  border-color: #e8b7b3;
+}
+
+.account-modal > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.account-modal > footer button {
+  min-height: 42px;
+  border-radius: 11px;
+  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.account-modal > footer button:disabled {
+  opacity: .45;
+}
+
+.account-modal > footer .cancel {
+  border: 1px solid var(--line);
+  background: transparent;
+}
+
+.account-modal > footer .save {
+  border: 1px solid var(--blue);
+  background: var(--blue);
+  color: white;
+}
+
+.account-modal > footer .delete-account {
+  border: 1px solid #d14d45;
+  background: #d14d45;
+  color: white;
+}
+
+.account-modal > footer svg {
+  width: 15px;
+  height: 15px;
+}
+
+.delete-modal > p {
+  color: var(--muted);
+  line-height: 1.6;
+  margin: -5px 0 20px;
+}
+
 .public-footer {
   border-top: 1px solid var(--line);
   margin-top: 60px;
@@ -3413,6 +3619,21 @@ textarea:focus-visible {
 @media (max-width: 760px) {
   .account-links {
     flex-wrap: wrap;
+  }
+
+  .account-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .account-modal {
+    padding: 20px 17px;
+    border-radius: 20px;
+    box-shadow: 5px 5px 0 var(--ink);
+  }
+
+  .account-modal > footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   .public-footer {

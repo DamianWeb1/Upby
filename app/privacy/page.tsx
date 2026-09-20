@@ -27,7 +27,7 @@ export default function PrivacyPage() {
       </section>
       <section>
         <h2>Control and removal</h2>
-        <p>You may edit your profile and privacy choices inside UPBY. For account or data removal requests, contact the UPBY team through the feedback link below.</p>
+        <p>You may edit your profile, change privacy choices, export your data, or permanently delete your account inside Profile settings. Account deletion removes your profile, logs, social connections, feedback, and uploaded avatar.</p>
       </section>
       <section>
         <h2>Contact</h2>

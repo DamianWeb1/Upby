@@ -34,6 +34,8 @@ import {
   Star,
   Award,
   CircleDollarSign,
+  Download,
+  MessageSquare,
   ShieldCheck,
   Zap,
   Target,
@@ -1654,11 +1656,63 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     [draftProfile, setDraftProfile] = useState<ProfileData>(profile),
     [avatarFile, setAvatarFile] = useState<File | null>(null),
     [savingProfile, setSavingProfile] = useState(false),
-    [editError, setEditError] = useState("");
+    [editError, setEditError] = useState(""),
+    [feedbackOpen, setFeedbackOpen] = useState(false),
+    [feedbackType, setFeedbackType] = useState("idea"),
+    [feedbackMessage, setFeedbackMessage] = useState(""),
+    [feedbackStatus, setFeedbackStatus] = useState(""),
+    [feedbackBusy, setFeedbackBusy] = useState(false),
+    [deleteOpen, setDeleteOpen] = useState(false),
+    [deleteConfirm, setDeleteConfirm] = useState(""),
+    [deleteBusy, setDeleteBusy] = useState(false),
+    [deleteError, setDeleteError] = useState("");
   const streak = freshStart ? (logs.length ? 1 : 0) : 12;
   const earned = freshStart ? earnedFrom(logs, net) : ["FIRST WIN", "30 DAY STREAK", "$5K MONTH", "TOP 100"];
   const selectedAchievements = freshStart ? earned.slice(0, 4) : earned;
   const openProfileEditor = () => { setDraftProfile(profile); setAvatarFile(null); setEditError(""); setEditingProfile(true); };
+  const shareProfile = async () => {
+    const url = `${window.location.origin}/${profile.username}`;
+    if (navigator.share) await navigator.share({ title: `${profile.displayName} on UPBY`, text: "See how much I am up by.", url }).catch(() => undefined);
+    else { await navigator.clipboard.writeText(url); setFeedbackStatus("Profile link copied"); setTimeout(() => setFeedbackStatus(""), 1800); }
+  };
+  const exportData = () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      account: { email: authUser?.email || null },
+      profile,
+      privacy: { showTotals: Boolean(prefs[0]), showLogs: Boolean(prefs[1]), showLosses: Boolean(prefs[2]), showScreenshots: Boolean(prefs[3]), leaderboard: Boolean(prefs[4]) },
+      totals: { wins, losses, net },
+      logs,
+      social: { following: followingCount, followers: followerCount },
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `upby-${profile.username}-data.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const submitFeedback = async () => {
+    const message = feedbackMessage.trim();
+    if (!authUser || message.length < 3) { setFeedbackStatus("Write a short message first."); return; }
+    setFeedbackBusy(true); setFeedbackStatus("");
+    const { error } = await supabase.from("feedback").insert({ user_id: authUser.id, type: feedbackType, message });
+    setFeedbackBusy(false);
+    if (error) { setFeedbackStatus(error.message); return; }
+    setFeedbackMessage(""); setFeedbackStatus("Feedback sent. Thank you.");
+    setTimeout(() => { setFeedbackOpen(false); setFeedbackStatus(""); }, 1200);
+  };
+  const deleteAccount = async () => {
+    if (!authUser || deleteConfirm !== "DELETE") return;
+    setDeleteBusy(true); setDeleteError("");
+    const { data: avatarFiles } = await supabase.storage.from("avatars").list(authUser.id, { limit: 100 });
+    if (avatarFiles?.length) await supabase.storage.from("avatars").remove(avatarFiles.map((file) => `${authUser.id}/${file.name}`));
+    const { error } = await supabase.rpc("delete_my_account");
+    if (error) { setDeleteError(error.message); setDeleteBusy(false); return; }
+    window.localStorage.removeItem(`${STORAGE_KEY}:${authUser.id}`);
+    await supabase.auth.signOut();
+    window.location.assign("/");
+  };
   const saveProfile = async () => {
     setSavingProfile(true);
     let nextProfile = {
@@ -1765,6 +1819,30 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
         )}
       </AnimatePresence>
       <AnimatePresence>
+        {feedbackOpen && (
+          <motion.div className="backdrop center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setFeedbackOpen(false)}>
+            <motion.section className="account-modal" initial={{ y: 24, scale: .96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 18, opacity: 0 }} onMouseDown={(event) => event.stopPropagation()}>
+              <header><div><span>HELP SHAPE UPBY</span><h2>Send feedback</h2></div><button onClick={() => setFeedbackOpen(false)}><X /></button></header>
+              <div className="feedback-types">{["idea", "bug", "other"].map((type) => <button key={type} className={feedbackType === type ? "active" : ""} onClick={() => setFeedbackType(type)}>{type.toUpperCase()}</button>)}</div>
+              <label><span>YOUR MESSAGE</span><textarea value={feedbackMessage} maxLength={600} placeholder="Tell us what should improve" onChange={(event) => setFeedbackMessage(event.target.value)} /><small>{feedbackMessage.length}/600</small></label>
+              {feedbackStatus && <p className="account-modal-status">{feedbackStatus}</p>}
+              <footer><button className="cancel" disabled={feedbackBusy} onClick={() => setFeedbackOpen(false)}>CANCEL</button><button className="save" disabled={feedbackBusy || feedbackMessage.trim().length < 3} onClick={submitFeedback}>{feedbackBusy ? <LoaderCircle className="spin" /> : <MessageSquare />}{feedbackBusy ? "SENDING" : "SEND"}</button></footer>
+            </motion.section>
+          </motion.div>
+        )}
+        {deleteOpen && (
+          <motion.div className="backdrop center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => !deleteBusy && setDeleteOpen(false)}>
+            <motion.section className="account-modal delete-modal" initial={{ y: 24, scale: .96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 18, opacity: 0 }} onMouseDown={(event) => event.stopPropagation()}>
+              <header><div><span>PERMANENT ACTION</span><h2>Delete account</h2></div><button disabled={deleteBusy} onClick={() => setDeleteOpen(false)}><X /></button></header>
+              <p>This permanently removes your profile, logs, followers, uploaded avatar, and saved progress.</p>
+              <label><span>TYPE DELETE TO CONFIRM</span><input value={deleteConfirm} autoComplete="off" onChange={(event) => setDeleteConfirm(event.target.value.toUpperCase())} /></label>
+              {deleteError && <p className="account-modal-status error">{deleteError}</p>}
+              <footer><button className="cancel" disabled={deleteBusy} onClick={() => setDeleteOpen(false)}>CANCEL</button><button className="delete-account" disabled={deleteBusy || deleteConfirm !== "DELETE"} onClick={deleteAccount}>{deleteBusy ? <LoaderCircle className="spin" /> : <Trash2 />}{deleteBusy ? "DELETING" : "DELETE FOREVER"}</button></footer>
+            </motion.section>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
         {settings && (
           <motion.section
             className="privacy"
@@ -1796,7 +1874,8 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
               <div><b>{demoMode ? "Demo session" : authUser?.email}</b><span>{demoMode ? "Sample data mode" : "Signed in securely with Supabase"}</span></div>
               <button onClick={signOut}><LogOut />{demoMode ? "EXIT DEMO" : "SIGN OUT"}</button>
             </div>
-            <nav className="account-links"><a href="/privacy">PRIVACY</a><a href="/terms">TERMS</a><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">SEND FEEDBACK <ArrowUpRight /></a></nav>
+            {!demoMode && <div className="account-tools"><button onClick={exportData}><Download />EXPORT DATA</button><button onClick={() => { setFeedbackStatus(""); setFeedbackOpen(true); }}><MessageSquare />SEND FEEDBACK</button><button className="danger" onClick={() => { setDeleteConfirm(""); setDeleteError(""); setDeleteOpen(true); }}><Trash2 />DELETE ACCOUNT</button></div>}
+            <nav className="account-links"><a href="/privacy">PRIVACY</a><a href="/terms">TERMS</a></nav>
           </motion.section>
         )}
       </AnimatePresence>
@@ -1823,7 +1902,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
           <b>{freshStart ? followerCount : "1,842"}</b>
           <span>FOLLOWERS</span>
         </div>
-        <button>
+        <button onClick={shareProfile}>
           SHARE PROFILE
           <Share2 />
         </button>
