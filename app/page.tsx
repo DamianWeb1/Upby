@@ -270,7 +270,7 @@ function Onboarding({ onComplete, onBack, initialProfile = DEFAULT_PROFILE }: { 
   const [step, setStep] = useState(0);
   const [displayName, setDisplayName] = useState(initialProfile.displayName);
   const [username, setUsername] = useState(initialProfile.username);
-  const [xProfile, setXProfile] = useState(initialProfile.xProfile);
+  const [xProfile, setXProfile] = useState(initialProfile.xProfile === DEFAULT_PROFILE.xProfile && initialProfile.username !== DEFAULT_PROFILE.username ? "" : initialProfile.xProfile);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialProfile.avatarUrl);
   const [privacy, setPrivacy] = useState([true, true, true, false, true]);
   const validIdentity = displayName.trim().length > 1 && username.trim().length >= 3;
@@ -354,7 +354,7 @@ function Onboarding({ onComplete, onBack, initialProfile = DEFAULT_PROFILE }: { 
               OPEN MY UPBY <ArrowUpRight />
             </button>
           )}
-          {step === 1 && <button className="skip-step" onClick={next}>Skip for now</button>}
+          {step === 1 && <button className="skip-step" onClick={() => { setXProfile(""); next(); }}>Skip for now</button>}
         </footer>
       </section>
     </main>
@@ -390,10 +390,14 @@ export default function App() {
       if (user) {
         const metadata = user.user_metadata || {};
         const suggestedUsername = String(user.email || "member").split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24);
+        const incomingUsername = metadata.username || suggestedUsername || "";
+        const incomingXProfile = metadata.x_profile || "";
         setProfile((current) => ({
           displayName: metadata.display_name || metadata.full_name || metadata.name || current.displayName,
-          username: metadata.username || suggestedUsername || current.username,
-          xProfile: metadata.x_profile || current.xProfile,
+          username: incomingUsername || current.username,
+          xProfile: incomingXProfile === DEFAULT_PROFILE.xProfile && incomingUsername !== DEFAULT_PROFILE.username
+            ? ""
+            : incomingXProfile || (metadata.onboarding_complete ? current.xProfile : ""),
           avatarUrl: metadata.upby_avatar_url || (metadata.onboarding_complete ? current.avatarUrl : metadata.avatar_url || current.avatarUrl),
         }));
         setStage(metadata.onboarding_complete ? "app" : "onboarding");
@@ -478,7 +482,7 @@ export default function App() {
             username: savedProfile.username || current.username,
             avatarUrl: savedProfile.avatar_url,
             bio: savedProfile.bio || current.bio,
-            xProfile: savedProfile.x_profile || current.xProfile,
+            xProfile: savedProfile.x_profile === DEFAULT_PROFILE.xProfile && savedProfile.username !== DEFAULT_PROFILE.username ? "" : savedProfile.x_profile || "",
           }));
         }
 
@@ -725,7 +729,7 @@ export default function App() {
           ) : tab === "insights" ? (
             <Insights {...{ net, wins, losses, logs, freshStart }} />
           ) : (
-            <Profile {...{ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut, followingCount: following.length, followerCount }} />
+            <Profile {...{ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut, followingCount: following.length, followerCount, startLog: () => setQuick(true) }} />
           )}
         </motion.main>
       </AnimatePresence>
@@ -1703,7 +1707,7 @@ function RecapStory({ period, recapOverride }: { period: string; recapOverride?:
     </div>
   );
 }
-function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut, followingCount, followerCount }: any) {
+function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut, followingCount, followerCount, startLog }: any) {
   const [settings, setSettings] = useState(false),
     [publicPreview, setPublicPreview] = useState(false),
     [editingProfile, setEditingProfile] = useState(false),
@@ -1974,7 +1978,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
               <Medal />
               {x}
             </span>
-          )) : <div className="profile-empty"><Trophy /><b>Your first badge is waiting</b><span>Log progress to collect it.</span></div>}
+          )) : <div className="profile-empty"><Trophy /><b>Your first badge is waiting</b><span>Log your first entry to collect it.</span><button onClick={startLog}>LOG FIRST ENTRY <ArrowUpRight /></button></div>}
         </div>
       </section>
       <section className="public-logs">
