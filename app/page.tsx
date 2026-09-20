@@ -179,6 +179,19 @@ const rowToLog = (row: LogRow): Log => ({
   note: row.note || undefined,
   screenshot: row.screenshot,
 });
+const trackProductEvent = async (
+  userId: string | undefined,
+  eventName: string,
+  area: string,
+  metadata: Record<string, string | number | boolean> = {},
+) => {
+  if (!userId) return;
+  try {
+    await supabase.from("product_events").insert({ user_id: userId, event_name: eventName, area, metadata });
+  } catch {
+    // Analytics must never interrupt the product experience.
+  }
+};
 function Logo() {
   return (
     <div className="logo">
@@ -389,7 +402,16 @@ export default function App() {
       setAuthReady(true);
     };
     supabase.auth.getSession().then(({ data }) => applyUser(data.session?.user || null));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => applyUser(session?.user || null));
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      applyUser(session?.user || null);
+      if (event === "SIGNED_IN" && session?.user) {
+        const eventKey = `upby:signed-in:${session.user.id}`;
+        if (!window.sessionStorage.getItem(eventKey)) {
+          window.sessionStorage.setItem(eventKey, "1");
+          void trackProductEvent(session.user.id, "signed_in", "auth", { provider: session.user.app_metadata?.provider || "unknown" });
+        }
+      }
+    });
     return () => {
       active = false;
       listener.subscription.unsubscribe();
@@ -496,12 +518,14 @@ export default function App() {
         }
         if (active) setLogs(mergedLogs);
       } catch {
+        void trackProductEvent(authUser.id, "client_error", "sync", { code: "hydrate_failed" });
         try {
           const raw = window.localStorage.getItem(userStorageKey);
           const localState = raw ? JSON.parse(raw) as Partial<PersistedState> : undefined;
           if (!localState || !applySavedState(localState)) resetAccount();
           else if (active && Array.isArray(localState.logs)) setLogs(localState.logs);
         } catch {
+          void trackProductEvent(authUser.id, "client_error", "storage", { code: "local_state_invalid" });
           window.localStorage.removeItem(userStorageKey);
           resetAccount();
         }
@@ -519,6 +543,7 @@ export default function App() {
     try {
       window.localStorage.setItem(`${STORAGE_KEY}:${authUser.id}`, JSON.stringify(saved));
     } catch {
+      void trackProductEvent(authUser.id, "client_error", "storage", { code: "local_save_failed" });
       setToast("Your browser could not save this update");
     }
     const syncTimer = window.setTimeout(async () => {
@@ -526,7 +551,7 @@ export default function App() {
         { user_id: authUser.id, state: remoteState, updated_at: new Date().toISOString() },
         { onConflict: "user_id" },
       );
-      if (error) return;
+      if (error) void trackProductEvent(authUser.id, "client_error", "sync", { code: "state_sync_failed" });
     }, 500);
     return () => window.clearTimeout(syncTimer);
   }, [hydrated, authUser, stage, tab, logs, freshStart, profile, prefs, following, customCategories]);
@@ -548,12 +573,31 @@ export default function App() {
         leaderboard_enabled: Boolean(prefs[4]),
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
-      if (profileError) return;
+      if (profileError) {
+        void trackProductEvent(authUser.id, "client_error", "profile", { code: "profile_sync_failed" });
+        return;
+      }
       const { data, error } = await supabase.rpc("get_leaderboard", { leaderboard_period: "this_month" });
       if (!error && active) setLeaderboard((data || []) as LeaderboardEntry[]);
     }, 700);
     return () => { active = false; window.clearTimeout(timer); };
   }, [hydrated, authUser?.id, stage, demoMode, profile.displayName, profile.username, profile.avatarUrl, profile.bio, profile.xProfile, prefs, logs]);
+  useEffect(() => {
+    if (!hydrated || !authUser || demoMode) return;
+    void trackProductEvent(authUser.id, "screen_view", "navigation", { screen: stage === "app" ? tab : stage });
+  }, [hydrated, authUser?.id, demoMode, stage, tab]);
+  useEffect(() => {
+    if (!hydrated || !authUser || demoMode) return;
+    const reportError = (code: string) => void trackProductEvent(authUser.id, "client_error", "runtime", { code });
+    const onError = () => reportError("window_error");
+    const onRejection = () => reportError("unhandled_rejection");
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, [hydrated, authUser?.id, demoMode]);
   const trackedLogs = logs.filter((log) => !log.dateKey || new Date(`${log.dateKey}T00:00:00`).getMonth() === new Date().getMonth());
   const wins =
       (freshStart ? 0 : 3390) +
@@ -578,7 +622,9 @@ export default function App() {
     const l = { ...x, id: Date.now() };
     setLogs((v) => [l, ...v]);
     if (authUser) {
-      void supabase.from("logs").upsert(logToRow(l, authUser.id), { onConflict: "user_id,id" });
+      void supabase.from("logs").upsert(logToRow(l, authUser.id), { onConflict: "user_id,id" }).then(({ error }) => {
+        void trackProductEvent(authUser.id, error ? "client_error" : "log_created", "logs", error ? { code: "create_failed" } : { type: x.type, category: x.category });
+      });
     }
     setSheet(null);
     showSuccess(l);
@@ -588,7 +634,9 @@ export default function App() {
     const updated = { ...data, id };
     setLogs((items) => items.map((item) => item.id === id ? updated : item));
     if (authUser) {
-      void supabase.from("logs").upsert(logToRow(updated, authUser.id), { onConflict: "user_id,id" });
+      void supabase.from("logs").upsert(logToRow(updated, authUser.id), { onConflict: "user_id,id" }).then(({ error }) => {
+        void trackProductEvent(authUser.id, error ? "client_error" : "log_updated", "logs", error ? { code: "update_failed" } : { type: data.type, category: data.category });
+      });
     }
     setEditing(null);
     showSuccess(updated);
@@ -596,13 +644,18 @@ export default function App() {
   const removeLog = (id: number) => {
     setLogs((items) => items.filter((item) => item.id !== id));
     if (authUser) {
-      void supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id);
+      void supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id).then(({ error }) => {
+        void trackProductEvent(authUser.id, error ? "client_error" : "log_deleted", "logs", error ? { code: "delete_failed" } : {});
+      });
     }
     setToast("Log removed");
     setTimeout(() => setToast(""), 1800);
   };
   const signOut = async () => {
-    if (authUser) await supabase.auth.signOut();
+    if (authUser) {
+      await trackProductEvent(authUser.id, "signed_out", "auth");
+      await supabase.auth.signOut();
+    }
     setAuthUser(null);
     setDemoMode(false);
     setStage("auth");
@@ -618,6 +671,7 @@ export default function App() {
     return <Onboarding onComplete={async (nextProfile, nextPrefs) => {
       const { error } = await supabase.auth.updateUser({ data: { display_name: nextProfile.displayName, username: nextProfile.username, x_profile: nextProfile.xProfile, upby_avatar_url: nextProfile.avatarUrl?.startsWith("data:") ? null : nextProfile.avatarUrl, onboarding_complete: true } });
       if (error) return;
+      void trackProductEvent(authUser?.id, "onboarding_completed", "onboarding");
       setProfile(nextProfile); setPrefs(nextPrefs); setFollowing([]); setCustomCategories([]); setFreshStart(true); setLogs([]); setTab("home"); setStage("app");
     }} onBack={signOut} initialProfile={profile} />;
   }
@@ -1674,6 +1728,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     const url = `${window.location.origin}/${profile.username}`;
     if (navigator.share) await navigator.share({ title: `${profile.displayName} on UPBY`, text: "See how much I am up by.", url }).catch(() => undefined);
     else { await navigator.clipboard.writeText(url); setFeedbackStatus("Profile link copied"); setTimeout(() => setFeedbackStatus(""), 1800); }
+    void trackProductEvent(authUser?.id, "profile_shared", "profile");
   };
   const exportData = () => {
     const payload = {
@@ -1691,6 +1746,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     link.download = `upby-${profile.username}-data.json`;
     link.click();
     URL.revokeObjectURL(url);
+    void trackProductEvent(authUser?.id, "data_exported", "account");
   };
   const submitFeedback = async () => {
     const message = feedbackMessage.trim();
@@ -1699,6 +1755,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     const { error } = await supabase.from("feedback").insert({ user_id: authUser.id, type: feedbackType, message });
     setFeedbackBusy(false);
     if (error) { setFeedbackStatus(error.message); return; }
+    void trackProductEvent(authUser.id, "feedback_sent", "feedback", { type: feedbackType });
     setFeedbackMessage(""); setFeedbackStatus("Feedback sent. Thank you.");
     setTimeout(() => { setFeedbackOpen(false); setFeedbackStatus(""); }, 1200);
   };
@@ -1707,6 +1764,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     setDeleteBusy(true); setDeleteError("");
     const { data: avatarFiles } = await supabase.storage.from("avatars").list(authUser.id, { limit: 100 });
     if (avatarFiles?.length) await supabase.storage.from("avatars").remove(avatarFiles.map((file) => `${authUser.id}/${file.name}`));
+    await trackProductEvent(authUser.id, "account_deleted", "account");
     const { error } = await supabase.rpc("delete_my_account");
     if (error) { setDeleteError(error.message); setDeleteBusy(false); return; }
     window.localStorage.removeItem(`${STORAGE_KEY}:${authUser.id}`);
@@ -1767,6 +1825,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
         onboarding_complete: true,
       } });
       if (error) { setEditError(error.message); setSavingProfile(false); return; }
+      void trackProductEvent(authUser.id, "profile_updated", "profile", { avatar_changed: Boolean(avatarFile) });
     }
     setProfile(nextProfile);
     setSavingProfile(false);
@@ -2000,7 +2059,12 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
       ? supabase.from("follows").delete().eq("follower_id", authUserId).eq("followed_id", targetId)
       : supabase.from("follows").insert({ follower_id: authUserId, followed_id: targetId });
     const { error } = await request;
-    if (error) setFollowing((items: string[]) => alreadyFollowing ? [...items, targetId] : items.filter((id: string) => id !== targetId));
+    if (error) {
+      setFollowing((items: string[]) => alreadyFollowing ? [...items, targetId] : items.filter((id: string) => id !== targetId));
+      void trackProductEvent(authUserId, "client_error", "social", { code: alreadyFollowing ? "unfollow_failed" : "follow_failed" });
+      return;
+    }
+    void trackProductEvent(authUserId, alreadyFollowing ? "user_unfollowed" : "user_followed", "social");
   };
   return (
     <motion.div

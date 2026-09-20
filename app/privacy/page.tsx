@@ -18,6 +18,10 @@ export default function PrivacyPage() {
         <p>We use your information to authenticate your account, save your progress, calculate insights, display leaderboards, and create the public profile features you enable.</p>
       </section>
       <section>
+        <h2>Product analytics</h2>
+        <p>UPBY records basic feature-use counts and generic error categories so we can improve reliability. Analytics do not include your log amounts, titles, notes, email address, or private profile content.</p>
+      </section>
+      <section>
         <h2>Public information</h2>
         <p>Your username and display name form your public profile. Your totals, individual logs, losses, screenshots, and leaderboard visibility follow the privacy controls in your Profile settings.</p>
       </section>
