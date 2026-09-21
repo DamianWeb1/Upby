@@ -762,7 +762,7 @@ export default function App() {
         {board && <Leaderboard close={() => setBoard(false)} following={following} setFollowing={setFollowing} freshStart={freshStart} profile={profile} net={net} logs={logs} leaderboard={leaderboard} authUserId={authUser?.id} />}
       </AnimatePresence>
       <AnimatePresence>
-        {share && <Share log={share} net={net} close={() => setShare(null)} />}
+        {share && <Share log={share} net={net} displayName={profile.displayName} close={() => setShare(null)} />}
       </AnimatePresence>
       <AnimatePresence>
         {success && <LogSuccess log={success} />}
@@ -2187,7 +2187,13 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
     </motion.div>
   );
 }
-function Share({ log, net, close }: any) {
+function Share({ log, net, displayName, close }: any) {
+  const ownerName = String(displayName || "YOU").trim().toUpperCase();
+  const shareToX = () => {
+    const result = `${log.type === "win" ? "+" : "-"}${money(log.amount)}`;
+    const text = `${ownerName} logged a ${log.type} on UPBY\n\n${result} · ${log.category}\n${log.title}`;
+    window.open(`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(window.location.origin)}`, "_blank", "noopener,noreferrer");
+  };
   return (
     <motion.div
       className="backdrop center"
@@ -2205,9 +2211,7 @@ function Share({ log, net, close }: any) {
         <div className={`share-card ${log.type}`}>
           <Logo />
           <span>
-            {log.type === "win"
-              ? "DAMIAN LOGGED A WIN"
-              : `-${money(log.amount)} TODAY`}
+            {ownerName} LOGGED A {log.type.toUpperCase()}
           </span>
           <strong>
             {log.type === "win" ? "+" : "-"}
@@ -2222,7 +2226,7 @@ function Share({ log, net, close }: any) {
             <b>+{money(net)} THIS MONTH</b>
           </footer>
         </div>
-        <button className="share-x">
+        <button className="share-x" onClick={shareToX}>
           <Share2 />
           SHARE TO X
         </button>
