@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./auth.css";
+import MotionProvider from "./motion-provider";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://getupby.vercel.app"),
@@ -42,7 +43,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      <head>
+        <link rel="preconnect" href="https://nnldupufprzidjelgpzp.supabase.co" />
+        <link rel="dns-prefetch" href="https://nnldupufprzidjelgpzp.supabase.co" />
+      </head>
+      <body className="antialiased"><MotionProvider>{children}</MotionProvider></body>
     </html>
   );
 }

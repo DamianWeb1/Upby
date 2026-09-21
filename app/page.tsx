@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m as motion } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 import {
   ArrowUpRight,
@@ -453,12 +453,25 @@ export default function App() {
     const hydrateAccount = async () => {
       setHydrated(false);
       try {
-        const { data: stateData, error: stateError } = await supabase
-          .from("user_states")
-          .select("state")
-          .eq("user_id", authUser.id)
-          .maybeSingle();
+        const [
+          { data: stateData, error: stateError },
+          { data: savedProfile, error: savedProfileError },
+          { data: followedRows, error: followsError },
+          { count: followers, error: followersError },
+          { data: logRows, error: logsError },
+        ] = await Promise.all([
+          supabase.from("user_states").select("state").eq("user_id", authUser.id).maybeSingle(),
+          supabase.from("profiles").select("display_name,username,avatar_url,bio,x_profile").eq("user_id", authUser.id).maybeSingle(),
+          supabase.from("follows").select("followed_id").eq("follower_id", authUser.id),
+          supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUser.id),
+          supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot").eq("user_id", authUser.id).order("id", { ascending: false }),
+        ]);
         if (stateError) throw stateError;
+        if (savedProfileError) throw savedProfileError;
+        if (followsError) throw followsError;
+        if (followersError) throw followersError;
+        if (logsError) throw logsError;
+
         const raw = window.localStorage.getItem(userStorageKey);
         const localState = raw ? JSON.parse(raw) as Partial<PersistedState> : undefined;
         const remoteState = stateData?.state as Partial<PersistedState> | undefined;
@@ -469,12 +482,6 @@ export default function App() {
             : undefined;
         if (!savedState) resetAccount();
 
-        const { data: savedProfile, error: savedProfileError } = await supabase
-          .from("profiles")
-          .select("display_name,username,avatar_url,bio,x_profile")
-          .eq("user_id", authUser.id)
-          .maybeSingle();
-        if (savedProfileError) throw savedProfileError;
         if (savedProfile && active) {
           setProfile((current) => ({
             ...current,
@@ -486,23 +493,11 @@ export default function App() {
           }));
         }
 
-        const [{ data: followedRows, error: followsError }, { count: followers, error: followersError }] = await Promise.all([
-          supabase.from("follows").select("followed_id").eq("follower_id", authUser.id),
-          supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUser.id),
-        ]);
-        if (followsError) throw followsError;
-        if (followersError) throw followersError;
         if (active) {
           setFollowing((followedRows || []).map((row: { followed_id: string }) => row.followed_id));
           setFollowerCount(followers || 0);
         }
 
-        const { data: logRows, error: logsError } = await supabase
-          .from("logs")
-          .select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot")
-          .eq("user_id", authUser.id)
-          .order("id", { ascending: false });
-        if (logsError) throw logsError;
         const localLogs = Array.isArray(localState?.logs)
           ? localState.logs
           : Array.isArray(savedState?.logs)
@@ -515,10 +510,12 @@ export default function App() {
           ...remoteLogs.filter((log) => !localIds.has(log.id)),
         ].sort((a, b) => b.id - a.id);
         if (localLogs.length) {
-          const { error: migrationError } = await supabase
+          void supabase
             .from("logs")
-            .upsert(localLogs.map((log) => logToRow(log, authUser.id)), { onConflict: "user_id,id" });
-          if (migrationError) throw migrationError;
+            .upsert(localLogs.map((log) => logToRow(log, authUser.id)), { onConflict: "user_id,id" })
+            .then(({ error: migrationError }) => {
+              if (migrationError) void trackProductEvent(authUser.id, "client_error", "sync", { code: "log_migration_failed" });
+            });
         }
         if (active) setLogs(mergedLogs);
       } catch {
@@ -616,7 +613,7 @@ export default function App() {
     net = wins - losses;
   const nav = (x: Tab) => {
     setTab(x);
-    scrollTo({ top: 0, behavior: "smooth" });
+    scrollTo({ top: 0, behavior: "auto" });
   };
   const showSuccess = (log: Log) => {
     setSuccess(log);

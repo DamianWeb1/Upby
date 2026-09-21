@@ -3688,6 +3688,22 @@ textarea:focus-visible {
 }
 
 @media (max-width: 850px) {
+  .duo,
+  .recent,
+  .insights > .stats,
+  .insights > .heat,
+  .insights > .mix,
+  .insights > .achievements,
+  .insights > .recap,
+  .profile > .profile-score,
+  .profile > .social,
+  .profile > .selected,
+  .profile > .public-logs,
+  .profile > .history {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 520px;
+  }
+
   .onboarding-page {
     width: 100%;
     max-width: 100%;
