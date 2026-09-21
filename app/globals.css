@@ -963,6 +963,7 @@ textarea:focus-visible {
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: 50%;
 }
 .settings {
   position: absolute;
@@ -982,7 +983,7 @@ textarea:focus-visible {
   font-size: 65px;
   font-weight: 950;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
 }
 .big-avatar i {
   position: absolute;
@@ -991,8 +992,9 @@ textarea:focus-visible {
   border: 3px solid var(--ink);
   background: var(--lime);
   border-radius: 50%;
-  right: 5px;
+  right: -5px;
   bottom: 8px;
+  z-index: 2;
 }
 .profile-head > div:nth-child(3) > span {
   font-size: 10px;
