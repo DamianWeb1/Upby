@@ -94,7 +94,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
   };
 
   if (loading) return <main className="public-page public-loading"><div className="public-avatar" /><p>Loading profile...</p></main>;
-  if (!profile) return <main className="public-page public-missing"><a href="/"><ArrowLeft /> Back to UPBY</a><h1>Profile not found.</h1><p>This username does not exist or has changed.</p></main>;
+  if (!profile) return <main className="public-page public-missing"><a href="/"><ArrowLeft /> Back to UPBY</a><h1>Profile unavailable.</h1><p>This profile is private, missing, or its username has changed.</p></main>;
 
   const ownProfile = viewerId === profile.user_id;
   const badges = [profile.logs.length ? "FIRST LOG" : null, profile.streak >= 7 ? "7 DAY STREAK" : null, Number(profile.net) >= 1000 ? "$1K MONTH" : null].filter(Boolean);
