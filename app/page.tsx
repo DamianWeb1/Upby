@@ -527,27 +527,8 @@ export default function App() {
           setFollowerCount(followers || 0);
         }
 
-        const localLogs = Array.isArray(localState?.logs)
-          ? localState.logs
-          : Array.isArray(savedState?.logs)
-            ? savedState.logs
-            : [];
         const remoteLogs = (logRows as LogRow[] | null)?.map(rowToLog) || [];
-        const localIds = new Set(localLogs.map((log) => log.id));
-        const mergedLogs = [
-          ...localLogs,
-          ...remoteLogs.filter((log) => !localIds.has(log.id)),
-        ].sort((a, b) => b.id - a.id);
-        if (localLogs.length) {
-          void Promise.resolve(supabase
-            .from("logs")
-            .upsert(localLogs.map((log) => logToRow(log, authUser.id)), { onConflict: "user_id,id" }))
-            .then(({ error: migrationError }) => {
-              if (migrationError) void trackProductEvent(authUser.id, "client_error", "sync", { code: "log_migration_failed" });
-            })
-            .catch(() => void trackProductEvent(authUser.id, "client_error", "sync", { code: "log_migration_rejected" }));
-        }
-        if (active) setLogs(mergedLogs);
+        if (active) setLogs(remoteLogs);
       } catch {
         void trackProductEvent(authUser.id, "client_error", "sync", { code: "hydrate_failed" });
         try {
@@ -567,6 +548,48 @@ export default function App() {
     hydrateAccount();
     return () => { active = false; };
   }, [authReady, authUser?.id]);
+  useEffect(() => {
+    if (!hydrated || !authUser || demoMode) return;
+    let active = true;
+    let refreshing = false;
+    const refreshLogs = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      try {
+        const { data, error } = await supabase
+          .from("logs")
+          .select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot")
+          .eq("user_id", authUser.id)
+          .order("id", { ascending: false });
+        if (error) throw error;
+        if (active) setLogs((data as LogRow[] | null)?.map(rowToLog) || []);
+      } catch {
+        void trackProductEvent(authUser.id, "client_error", "sync", { code: "log_refresh_failed" });
+      } finally {
+        refreshing = false;
+      }
+    };
+    const onFocus = () => { void refreshLogs(); };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshLogs();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    const channel = supabase
+      .channel(`upby-logs-${authUser.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "logs", filter: `user_id=eq.${authUser.id}` },
+        () => { void refreshLogs(); },
+      )
+      .subscribe();
+    return () => {
+      active = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+      void supabase.removeChannel(channel);
+    };
+  }, [hydrated, authUser?.id, demoMode]);
   useEffect(() => {
     if (!hydrated || !authUser) return;
     const saved: PersistedState = { version: 2, ownerId: authUser.id, stage, tab, logs, freshStart: true, profile, prefs, following, customCategories };
@@ -674,42 +697,67 @@ export default function App() {
     setSuccess(log);
     setTimeout(() => setSuccess(null), 1600);
   };
-  const add = (x: Omit<Log, "id">) => {
+  const add = async (x: Omit<Log, "id">) => {
     const l = { ...x, id: Date.now() };
-    setLogs((v) => [l, ...v]);
     if (authUser) {
-      void Promise.resolve(supabase.from("logs").upsert(logToRow(l, authUser.id), { onConflict: "user_id,id" }))
-        .then(({ error }) => {
-          void trackProductEvent(authUser.id, error ? "client_error" : "log_created", "logs", error ? { code: "create_failed" } : { type: x.type, category: x.category });
-        })
-        .catch(() => void trackProductEvent(authUser.id, "client_error", "logs", { code: "create_rejected" }));
+      try {
+        const { error } = await supabase
+          .from("logs")
+          .upsert(logToRow(l, authUser.id), { onConflict: "user_id,id" });
+        if (error) throw error;
+        void trackProductEvent(authUser.id, "log_created", "logs", { type: x.type, category: x.category });
+      } catch {
+        void trackProductEvent(authUser.id, "client_error", "logs", { code: "create_failed" });
+        setToast("Could not save this log. Please try again.");
+        setTimeout(() => setToast(""), 2600);
+        return;
+      }
     }
+    setLogs((v) => [l, ...v.filter((item) => item.id !== l.id)]);
     setSheet(null);
     showSuccess(l);
     if (x.type === "win") setTimeout(() => setShare(l), 1750);
   };
-  const updateLog = (id: number, data: Omit<Log, "id">) => {
+  const updateLog = async (id: number, data: Omit<Log, "id">) => {
     const updated = { ...data, id };
-    setLogs((items) => items.map((item) => item.id === id ? updated : item));
     if (authUser) {
-      void Promise.resolve(supabase.from("logs").upsert(logToRow(updated, authUser.id), { onConflict: "user_id,id" }))
-        .then(({ error }) => {
-          void trackProductEvent(authUser.id, error ? "client_error" : "log_updated", "logs", error ? { code: "update_failed" } : { type: data.type, category: data.category });
-        })
-        .catch(() => void trackProductEvent(authUser.id, "client_error", "logs", { code: "update_rejected" }));
+      try {
+        const { error } = await supabase
+          .from("logs")
+          .upsert(logToRow(updated, authUser.id), { onConflict: "user_id,id" });
+        if (error) throw error;
+        void trackProductEvent(authUser.id, "log_updated", "logs", { type: data.type, category: data.category });
+      } catch {
+        void trackProductEvent(authUser.id, "client_error", "logs", { code: "update_failed" });
+        setToast("Could not update this log. Please try again.");
+        setTimeout(() => setToast(""), 2600);
+        return;
+      }
     }
+    setLogs((items) => items.map((item) => item.id === id ? updated : item));
     setEditing(null);
     showSuccess(updated);
   };
-  const removeLog = (id: number) => {
-    setLogs((items) => items.filter((item) => item.id !== id));
+  const removeLog = async (id: number) => {
     if (authUser) {
-      void Promise.resolve(supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id))
-        .then(({ error }) => {
-          void trackProductEvent(authUser.id, error ? "client_error" : "log_deleted", "logs", error ? { code: "delete_failed" } : {});
-        })
-        .catch(() => void trackProductEvent(authUser.id, "client_error", "logs", { code: "delete_rejected" }));
+      try {
+        const { data, error } = await supabase
+          .from("logs")
+          .delete()
+          .eq("user_id", authUser.id)
+          .eq("id", id)
+          .select("id");
+        if (error) throw error;
+        if (!data?.length) throw new Error("Log was not deleted");
+        void trackProductEvent(authUser.id, "log_deleted", "logs");
+      } catch {
+        void trackProductEvent(authUser.id, "client_error", "logs", { code: "delete_failed" });
+        setToast("Could not delete this log. Please try again.");
+        setTimeout(() => setToast(""), 2600);
+        return;
+      }
     }
+    setLogs((items) => items.filter((item) => item.id !== id));
     setToast("Log removed");
     setTimeout(() => setToast(""), 1800);
   };
