@@ -187,7 +187,8 @@ const trackProductEvent = async (
 ) => {
   if (!userId) return;
   try {
-    await supabase.from("product_events").insert({ user_id: userId, event_name: eventName, area, metadata });
+    const { error } = await supabase.from("product_events").insert({ user_id: userId, event_name: eventName, area, metadata });
+    if (error) return;
   } catch {
     // Analytics must never interrupt the product experience.
   }
@@ -405,7 +406,13 @@ export default function App() {
       }
       setAuthReady(true);
     };
-    supabase.auth.getSession().then(({ data }) => applyUser(data.session?.user || null));
+    void Promise.resolve(supabase.auth.getSession())
+      .then(({ data }) => applyUser(data.session?.user || null))
+      .catch(() => {
+        if (!active) return;
+        setAuthUser(null);
+        setAuthReady(true);
+      });
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       applyUser(session?.user || null);
       if (event === "SIGNED_IN" && session?.user) {
@@ -510,12 +517,13 @@ export default function App() {
           ...remoteLogs.filter((log) => !localIds.has(log.id)),
         ].sort((a, b) => b.id - a.id);
         if (localLogs.length) {
-          void supabase
+          void Promise.resolve(supabase
             .from("logs")
-            .upsert(localLogs.map((log) => logToRow(log, authUser.id)), { onConflict: "user_id,id" })
+            .upsert(localLogs.map((log) => logToRow(log, authUser.id)), { onConflict: "user_id,id" }))
             .then(({ error: migrationError }) => {
               if (migrationError) void trackProductEvent(authUser.id, "client_error", "sync", { code: "log_migration_failed" });
-            });
+            })
+            .catch(() => void trackProductEvent(authUser.id, "client_error", "sync", { code: "log_migration_rejected" }));
         }
         if (active) setLogs(mergedLogs);
       } catch {
@@ -548,11 +556,15 @@ export default function App() {
       setToast("Your browser could not save this update");
     }
     const syncTimer = window.setTimeout(async () => {
-      const { error } = await supabase.from("user_states").upsert(
-        { user_id: authUser.id, state: remoteState, updated_at: new Date().toISOString() },
-        { onConflict: "user_id" },
-      );
-      if (error) void trackProductEvent(authUser.id, "client_error", "sync", { code: "state_sync_failed" });
+      try {
+        const { error } = await supabase.from("user_states").upsert(
+          { user_id: authUser.id, state: remoteState, updated_at: new Date().toISOString() },
+          { onConflict: "user_id" },
+        );
+        if (error) void trackProductEvent(authUser.id, "client_error", "sync", { code: "state_sync_failed" });
+      } catch {
+        void trackProductEvent(authUser.id, "client_error", "sync", { code: "state_sync_rejected" });
+      }
     }, 500);
     return () => window.clearTimeout(syncTimer);
   }, [hydrated, authUser, stage, tab, logs, freshStart, profile, prefs, following, customCategories]);
@@ -560,26 +572,30 @@ export default function App() {
     if (!hydrated || !authUser || stage !== "app" || demoMode) return;
     let active = true;
     const timer = window.setTimeout(async () => {
-      const { error: profileError } = await supabase.from("profiles").upsert({
-        user_id: authUser.id,
-        display_name: profile.displayName,
-        username: profile.username,
-        avatar_url: profile.avatarUrl?.startsWith("data:") ? null : profile.avatarUrl,
-        bio: profile.bio || "",
-        x_profile: profile.xProfile || "",
-        show_totals: Boolean(prefs[0]),
-        show_logs: Boolean(prefs[1]),
-        show_losses: Boolean(prefs[2]),
-        show_screenshots: Boolean(prefs[3]),
-        leaderboard_enabled: Boolean(prefs[4]),
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "user_id" });
-      if (profileError) {
-        void trackProductEvent(authUser.id, "client_error", "profile", { code: "profile_sync_failed" });
-        return;
+      try {
+        const { error: profileError } = await supabase.from("profiles").upsert({
+          user_id: authUser.id,
+          display_name: profile.displayName,
+          username: profile.username,
+          avatar_url: profile.avatarUrl?.startsWith("data:") ? null : profile.avatarUrl,
+          bio: profile.bio || "",
+          x_profile: profile.xProfile || "",
+          show_totals: Boolean(prefs[0]),
+          show_logs: Boolean(prefs[1]),
+          show_losses: Boolean(prefs[2]),
+          show_screenshots: Boolean(prefs[3]),
+          leaderboard_enabled: Boolean(prefs[4]),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "user_id" });
+        if (profileError) {
+          void trackProductEvent(authUser.id, "client_error", "profile", { code: "profile_sync_failed" });
+          return;
+        }
+        const { data, error } = await supabase.rpc("get_leaderboard", { leaderboard_period: "this_month" });
+        if (!error && active) setLeaderboard((data || []) as LeaderboardEntry[]);
+      } catch {
+        void trackProductEvent(authUser.id, "client_error", "profile", { code: "profile_sync_rejected" });
       }
-      const { data, error } = await supabase.rpc("get_leaderboard", { leaderboard_period: "this_month" });
-      if (!error && active) setLeaderboard((data || []) as LeaderboardEntry[]);
     }, 700);
     return () => { active = false; window.clearTimeout(timer); };
   }, [hydrated, authUser?.id, stage, demoMode, profile.displayName, profile.username, profile.avatarUrl, profile.bio, profile.xProfile, prefs, logs]);
@@ -589,9 +605,25 @@ export default function App() {
   }, [hydrated, authUser?.id, demoMode, stage, tab]);
   useEffect(() => {
     if (!hydrated || !authUser || demoMode) return;
-    const reportError = (code: string) => void trackProductEvent(authUser.id, "client_error", "runtime", { code });
-    const onError = () => reportError("window_error");
-    const onRejection = () => reportError("unhandled_rejection");
+    const reportError = (code: string) => {
+      const key = `upby:runtime-error:${authUser.id}:${code}`;
+      const now = Date.now();
+      const lastReport = Number(window.sessionStorage.getItem(key) || 0);
+      if (now - lastReport < 60_000) return;
+      window.sessionStorage.setItem(key, String(now));
+      void trackProductEvent(authUser.id, "client_error", "runtime", { code });
+    };
+    const onError = (event: ErrorEvent) => {
+      if (/ResizeObserver loop|Script error/i.test(event.message || "")) return;
+      reportError("window_error");
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      const name = reason instanceof DOMException ? reason.name : "";
+      if (name === "AbortError" || name === "NotAllowedError") return;
+      const message = reason instanceof Error ? reason.message : String(reason || "");
+      reportError(/failed to fetch|load failed|network/i.test(message) ? "network_rejection" : "unhandled_rejection");
+    };
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
     return () => {
@@ -623,9 +655,11 @@ export default function App() {
     const l = { ...x, id: Date.now() };
     setLogs((v) => [l, ...v]);
     if (authUser) {
-      void supabase.from("logs").upsert(logToRow(l, authUser.id), { onConflict: "user_id,id" }).then(({ error }) => {
-        void trackProductEvent(authUser.id, error ? "client_error" : "log_created", "logs", error ? { code: "create_failed" } : { type: x.type, category: x.category });
-      });
+      void Promise.resolve(supabase.from("logs").upsert(logToRow(l, authUser.id), { onConflict: "user_id,id" }))
+        .then(({ error }) => {
+          void trackProductEvent(authUser.id, error ? "client_error" : "log_created", "logs", error ? { code: "create_failed" } : { type: x.type, category: x.category });
+        })
+        .catch(() => void trackProductEvent(authUser.id, "client_error", "logs", { code: "create_rejected" }));
     }
     setSheet(null);
     showSuccess(l);
@@ -635,9 +669,11 @@ export default function App() {
     const updated = { ...data, id };
     setLogs((items) => items.map((item) => item.id === id ? updated : item));
     if (authUser) {
-      void supabase.from("logs").upsert(logToRow(updated, authUser.id), { onConflict: "user_id,id" }).then(({ error }) => {
-        void trackProductEvent(authUser.id, error ? "client_error" : "log_updated", "logs", error ? { code: "update_failed" } : { type: data.type, category: data.category });
-      });
+      void Promise.resolve(supabase.from("logs").upsert(logToRow(updated, authUser.id), { onConflict: "user_id,id" }))
+        .then(({ error }) => {
+          void trackProductEvent(authUser.id, error ? "client_error" : "log_updated", "logs", error ? { code: "update_failed" } : { type: data.type, category: data.category });
+        })
+        .catch(() => void trackProductEvent(authUser.id, "client_error", "logs", { code: "update_rejected" }));
     }
     setEditing(null);
     showSuccess(updated);
@@ -645,9 +681,11 @@ export default function App() {
   const removeLog = (id: number) => {
     setLogs((items) => items.filter((item) => item.id !== id));
     if (authUser) {
-      void supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id).then(({ error }) => {
-        void trackProductEvent(authUser.id, error ? "client_error" : "log_deleted", "logs", error ? { code: "delete_failed" } : {});
-      });
+      void Promise.resolve(supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id))
+        .then(({ error }) => {
+          void trackProductEvent(authUser.id, error ? "client_error" : "log_deleted", "logs", error ? { code: "delete_failed" } : {});
+        })
+        .catch(() => void trackProductEvent(authUser.id, "client_error", "logs", { code: "delete_rejected" }));
     }
     setToast("Log removed");
     setTimeout(() => setToast(""), 1800);
