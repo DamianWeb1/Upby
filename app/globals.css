@@ -1085,6 +1085,13 @@ textarea:focus-visible {
   padding: 13px 0;
   border-top: 1px solid #ffffff26;
 }
+.privacy label > span { display: flex; flex-direction: column; gap: 3px; padding-right: 14px; }
+.privacy label > span b { font-size: 13px; }
+.privacy label > span small { color: #b9bcc8; font-size: 10px; line-height: 1.35; }
+.privacy label.privacy-disabled { opacity: .42; }
+.privacy label button:disabled { cursor: not-allowed; }
+.privacy-status { margin: 8px 0 0; color: var(--lime); font-size: 10px; font-weight: 850; }
+.privacy-status.error { color: var(--coral); }
 .privacy label button {
   width: 50px;
   height: 29px;
