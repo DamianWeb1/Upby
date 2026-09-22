@@ -91,7 +91,7 @@ type PersistedState = {
 };
 const STORAGE_KEY = "upby:account:v2";
 const DEFAULT_PROFILE: ProfileData = { displayName: "Damian", username: "damian", xProfile: "damian__web", avatarUrl: null, bio: "" };
-const DEFAULT_PREFS = [1, 1, 1, 0, 1];
+const DEFAULT_PREFS = [1, 1, 1, 0, 1, 1];
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "",
@@ -108,6 +108,15 @@ const CATS: [[string, string], ...Array<[string, string]>] = [
   ["Trading", "#3b82f6"],
   ["Airdrops", "#8bd450"],
   ["Freelance", "#f04f78"],
+  ["Other", "#8a8d9c"],
+];
+const LOSS_CATS: [[string, string], ...Array<[string, string]>] = [
+  ["Expenses", "#ff6c64"],
+  ["Tools & subscriptions", "#6848ff"],
+  ["Trading loss", "#f04f78"],
+  ["Failed project", "#ff9f1c"],
+  ["Fees", "#1769ff"],
+  ["Refunds", "#8a63ff"],
   ["Other", "#8a8d9c"],
 ];
 const START: Log[] = [
@@ -273,7 +282,7 @@ function Onboarding({ onComplete, onBack, initialProfile = DEFAULT_PROFILE }: { 
   const [username, setUsername] = useState(initialProfile.username);
   const [xProfile, setXProfile] = useState(initialProfile.xProfile === DEFAULT_PROFILE.xProfile && initialProfile.username !== DEFAULT_PROFILE.username ? "" : initialProfile.xProfile);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(initialProfile.avatarUrl);
-  const [privacy, setPrivacy] = useState([true, true, true, false, true]);
+  const [privacy, setPrivacy] = useState([true, true, true, false, true, true]);
   const validIdentity = displayName.trim().length > 1 && username.trim().length >= 3;
   const next = () => setStep((value) => Math.min(3, value + 1));
   const previous = () => step === 0 ? onBack() : setStep((value) => Math.max(0, value - 1));
@@ -282,7 +291,8 @@ function Onboarding({ onComplete, onBack, initialProfile = DEFAULT_PROFILE }: { 
     ["Show individual logs", "Let people see your public activity"],
     ["Show losses", "Include losses on your public profile"],
     ["Show screenshots", "Display screenshots attached to public logs"],
-    ["Join the leaderboard", "Appear in Global rankings by default"],
+    ["Appear in rankings", "Only controls the Global leaderboard"],
+    ["Public profile", "Turn this off to hide your full profile from everyone"],
   ];
   return (
     <main className="onboarding-page">
@@ -341,7 +351,7 @@ function Onboarding({ onComplete, onBack, initialProfile = DEFAULT_PROFILE }: { 
               <span>YOU’RE READY</span>
               <h1>Your UPBY profile is set.</h1>
               <p>Start by logging your first win or loss. Every entry builds your progress story.</p>
-              <div className="ready-summary"><span><b>@{username}</b>Your public profile</span><span><b>{privacy[4] ? "Visible" : "Hidden"}</b>Leaderboard status</span><span><b>Private by default</b>Screenshot visibility</span></div>
+              <div className="ready-summary"><span><b>@{username}</b>{privacy[5] ? "Public profile" : "Private profile"}</span><span><b>{privacy[4] && privacy[5] ? "Visible" : "Hidden"}</b>Leaderboard status</span><span><b>Private by default</b>Screenshot visibility</span></div>
             </>}
           </motion.div>
         </AnimatePresence>
@@ -442,7 +452,11 @@ export default function App() {
       if (saved.tab === "home" || saved.tab === "insights" || saved.tab === "profile") setTab(saved.tab);
       setFreshStart(true);
       if (saved.profile && typeof saved.profile.displayName === "string" && typeof saved.profile.username === "string") setProfile({ ...DEFAULT_PROFILE, ...saved.profile });
-      if (Array.isArray(saved.prefs) && saved.prefs.length === 5) setPrefs(saved.prefs.map((value) => Number(Boolean(value))));
+      if (Array.isArray(saved.prefs) && saved.prefs.length >= 5) {
+        const restored = saved.prefs.slice(0, 6).map((value) => Number(Boolean(value)));
+        if (restored.length === 5) restored.push(1);
+        setPrefs(restored);
+      }
       if (Array.isArray(saved.following)) setFollowing(saved.following.filter((value): value is string => typeof value === "string"));
       if (Array.isArray(saved.customCategories)) setCustomCategories(saved.customCategories.filter((item): item is [string, string] => Array.isArray(item) && typeof item[0] === "string" && typeof item[1] === "string"));
       return true;
@@ -468,7 +482,7 @@ export default function App() {
           { data: logRows, error: logsError },
         ] = await Promise.all([
           supabase.from("user_states").select("state").eq("user_id", authUser.id).maybeSingle(),
-          supabase.from("profiles").select("display_name,username,avatar_url,bio,x_profile").eq("user_id", authUser.id).maybeSingle(),
+          supabase.from("profiles").select("display_name,username,avatar_url,bio,x_profile,show_totals,show_logs,show_losses,show_screenshots,leaderboard_enabled,public_profile_enabled").eq("user_id", authUser.id).maybeSingle(),
           supabase.from("follows").select("followed_id").eq("follower_id", authUser.id),
           supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUser.id),
           supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot").eq("user_id", authUser.id).order("id", { ascending: false }),
@@ -498,6 +512,14 @@ export default function App() {
             bio: savedProfile.bio || current.bio,
             xProfile: savedProfile.x_profile === DEFAULT_PROFILE.xProfile && savedProfile.username !== DEFAULT_PROFILE.username ? "" : savedProfile.x_profile || "",
           }));
+          setPrefs([
+            Number(savedProfile.show_totals),
+            Number(savedProfile.show_logs),
+            Number(savedProfile.show_losses),
+            Number(savedProfile.show_screenshots),
+            Number(savedProfile.leaderboard_enabled),
+            Number(savedProfile.public_profile_enabled),
+          ]);
         }
 
         if (active) {
@@ -585,6 +607,7 @@ export default function App() {
           show_losses: Boolean(prefs[2]),
           show_screenshots: Boolean(prefs[3]),
           leaderboard_enabled: Boolean(prefs[4]),
+          public_profile_enabled: Boolean(prefs[5]),
           updated_at: new Date().toISOString(),
         }, { onConflict: "user_id" });
         if (profileError) {
@@ -1099,7 +1122,7 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
   const [kind, setKind] = useState<"win" | "loss">(type || "win"),
     [amount, setAmount] = useState(initial ? String(initial.amount) : ""),
     [title, setTitle] = useState(initial?.title || ""),
-    [category, setCategory] = useState(initial?.category || "Bounties"),
+    [category, setCategory] = useState(initial?.category || (type === "loss" ? LOSS_CATS[0][0] : CATS[0][0])),
     [note, setNote] = useState(initial?.note || ""),
     [date, setDate] = useState(startingDate),
     [custom, setCustom] = useState(false),
@@ -1109,7 +1132,10 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
     [preview, setPreview] = useState<string | null>(null),
     [screenshotAttached, setScreenshotAttached] = useState(Boolean(initial?.screenshot)),
     [confirmDelete, setConfirmDelete] = useState(false);
-  const savedCategories: Array<[string, string]> = [...customCategories, ...CATS];
+  const baseCategories = kind === "loss" ? LOSS_CATS : CATS;
+  const savedCategories: Array<[string, string]> = [...customCategories, ...baseCategories].filter(
+    ([name], index, items) => items.findIndex(([other]) => other.toLowerCase() === name.toLowerCase()) === index,
+  );
   const categoryList: Array<[string, string]> = savedCategories.some(([name]) => name === category)
     ? savedCategories
     : [[category, customColor], ...savedCategories];
@@ -1128,6 +1154,13 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
     setCategory(nextCategory[0]);
     onAddCustom?.(nextCategory);
     setCustom(false);
+  };
+  const changeKind = (nextKind: "win" | "loss") => {
+    if (nextKind === kind) return;
+    const currentDefaults = kind === "loss" ? LOSS_CATS : CATS;
+    const nextDefaults = nextKind === "loss" ? LOSS_CATS : CATS;
+    if (currentDefaults.some(([name]) => name === category)) setCategory(nextDefaults[0][0]);
+    setKind(nextKind);
   };
   return (
     <motion.div
@@ -1158,13 +1191,13 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
         <div className="toggle">
           <button
             className={kind === "win" ? "win" : ""}
-            onClick={() => setKind("win")}
+            onClick={() => changeKind("win")}
           >
             ↑ WIN
           </button>
           <button
             className={kind === "loss" ? "loss" : ""}
-            onClick={() => setKind("loss")}
+            onClick={() => changeKind("loss")}
           >
             ↓ LOSS
           </button>
@@ -1187,9 +1220,9 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
             <div className="amount-presets">
               {[100, 500, 1000].map((value) => <button key={value} onClick={() => setAmount(String(value))}>+{money(value)}</button>)}
             </div>
-            <Field label="PROJECT OR TITLE">
+            <Field label={kind === "loss" ? "EXPENSE OR SETBACK" : "PROJECT OR TITLE"}>
               <input
-                placeholder="What happened?"
+                placeholder={kind === "loss" ? "What did this cost you?" : "What happened?"}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
@@ -1203,7 +1236,7 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
             </Field>
           </div>
           <div className="log-side-fields">
-            <label className="field-label">CATEGORY</label>
+            <label className="field-label">{kind === "loss" ? "LOSS CATEGORY" : "CATEGORY"}</label>
             <div className="cats">
               {categoryList.map(([c, color]) => (
                 <button
@@ -1758,11 +1791,36 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     [deleteOpen, setDeleteOpen] = useState(false),
     [deleteConfirm, setDeleteConfirm] = useState(""),
     [deleteBusy, setDeleteBusy] = useState(false),
-    [deleteError, setDeleteError] = useState("");
+    [deleteError, setDeleteError] = useState(""),
+    [privacyStatus, setPrivacyStatus] = useState("");
   const streak = freshStart ? (logs.length ? 1 : 0) : 12;
   const earned = freshStart ? earnedFrom(logs, net) : ["FIRST WIN", "30 DAY STREAK", "$5K MONTH", "TOP 100"];
   const selectedAchievements = freshStart ? earned.slice(0, 4) : earned;
   const openProfileEditor = () => { setDraftProfile(profile); setAvatarFile(null); setEditError(""); setEditingProfile(true); };
+  const updatePrivacy = async (index: number) => {
+    const nextPrefs = prefs.map((value: number, itemIndex: number) => itemIndex === index ? Number(!value) : value);
+    if (index === 5 && !nextPrefs[5]) nextPrefs[4] = 0;
+    setPrefs(nextPrefs);
+    if (demoMode || !authUser) return;
+    setPrivacyStatus("Saving privacy...");
+    const { error } = await supabase.from("profiles").upsert({
+      user_id: authUser.id,
+      display_name: profile.displayName,
+      username: profile.username,
+      avatar_url: profile.avatarUrl?.startsWith("data:") ? null : profile.avatarUrl,
+      bio: profile.bio || "",
+      x_profile: profile.xProfile || "",
+      show_totals: Boolean(nextPrefs[0]),
+      show_logs: Boolean(nextPrefs[1]),
+      show_losses: Boolean(nextPrefs[2]),
+      show_screenshots: Boolean(nextPrefs[3]),
+      leaderboard_enabled: Boolean(nextPrefs[4]),
+      public_profile_enabled: Boolean(nextPrefs[5]),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "user_id" });
+    setPrivacyStatus(error ? "Privacy was not saved. Try again." : "Privacy saved");
+    if (!error) window.setTimeout(() => setPrivacyStatus(""), 1600);
+  };
   const shareProfile = async () => {
     const url = `${window.location.origin}/${profile.username}`;
     if (navigator.share) await navigator.share({ title: `${profile.displayName} on UPBY`, text: "See how much I am up by.", url }).catch(() => undefined);
@@ -1774,7 +1832,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
       exportedAt: new Date().toISOString(),
       account: { email: authUser?.email || null },
       profile,
-      privacy: { showTotals: Boolean(prefs[0]), showLogs: Boolean(prefs[1]), showLosses: Boolean(prefs[2]), showScreenshots: Boolean(prefs[3]), leaderboard: Boolean(prefs[4]) },
+      privacy: { showTotals: Boolean(prefs[0]), showLogs: Boolean(prefs[1]), showLosses: Boolean(prefs[2]), showScreenshots: Boolean(prefs[3]), leaderboard: Boolean(prefs[4]), publicProfile: Boolean(prefs[5]) },
       totals: { wins, losses, net },
       logs,
       social: { following: followingCount, followers: followerCount },
@@ -1850,6 +1908,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
         show_losses: Boolean(prefs[2]),
         show_screenshots: Boolean(prefs[3]),
         leaderboard_enabled: Boolean(prefs[4]),
+        public_profile_enabled: Boolean(prefs[5]),
         updated_at: new Date().toISOString(),
       }, { onConflict: "user_id" });
       if (profileError) { setEditError(profileError.message); setSavingProfile(false); return; }
@@ -1950,24 +2009,28 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
           >
             <Title over="PROFILE SETTINGS" title="Privacy" />
             {[
-              "Show monetary totals",
-              "Show individual logs",
-              "Show losses",
-              "Show screenshots",
-              "Join global leaderboard",
-            ].map((x, i) => (
-              <label key={x}>
-                {x}
+              ["Public profile", "Turn this off to hide your full profile", 5],
+              ["Show monetary totals", "Display amounts on your public profile", 0],
+              ["Show individual logs", "Let people see your public activity", 1],
+              ["Show losses", "Include losses in public totals and logs", 2],
+              ["Show screenshots", "Display screenshots attached to public logs", 3],
+              ["Appear in rankings", "Only controls the Global leaderboard", 4],
+            ].map(([label, copy, preferenceIndex]) => {
+              const i = Number(preferenceIndex);
+              const disabled = !prefs[5] && i !== 5;
+              return (
+              <label key={String(label)} className={disabled ? "privacy-disabled" : ""}>
+                <span><b>{label}</b><small>{copy}</small></span>
                 <button
                   className={prefs[i] ? "on" : ""}
-                  onClick={() =>
-                    setPrefs((v: number[]) => v.map((n: number, j: number) => (j === i ? +!n : n)))
-                  }
+                  disabled={disabled || privacyStatus === "Saving privacy..."}
+                  onClick={() => void updatePrivacy(i)}
                 >
                   <i />
                 </button>
               </label>
-            ))}
+            )})}
+            {privacyStatus && <p className={privacyStatus.includes("not") ? "privacy-status error" : "privacy-status"}>{privacyStatus}</p>}
             <div className="account-session">
               <div><b>{demoMode ? "Demo session" : authUser?.email}</b><span>{demoMode ? "Sample data mode" : "Signed in securely with Supabase"}</span></div>
               <button onClick={signOut}><LogOut />{demoMode ? "EXIT DEMO" : "SIGN OUT"}</button>
