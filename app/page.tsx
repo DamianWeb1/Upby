@@ -202,6 +202,22 @@ const trackProductEvent = async (
     // Analytics must never interrupt the product experience.
   }
 };
+const errorMetadata = (
+  error: unknown,
+  source: string,
+  fallbackCode: string,
+): Record<string, string | number | boolean> => {
+  const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  const message = error instanceof Error ? error.message : typeof value.message === "string" ? value.message : "Unknown error";
+  return {
+    code: fallbackCode,
+    source,
+    error_code: String(value.code || value.name || "unknown").slice(0, 60),
+    status: typeof value.status === "number" ? value.status : 0,
+    message: message.slice(0, 180),
+    hint: typeof value.hint === "string" ? value.hint.slice(0, 180) : "",
+  };
+};
 function Logo() {
   return (
     <div className="logo">
@@ -487,15 +503,26 @@ export default function App() {
           supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUser.id),
           supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot").eq("user_id", authUser.id).order("id", { ascending: false }),
         ]);
-        if (stateError) throw stateError;
-        if (savedProfileError) throw savedProfileError;
-        if (followsError) throw followsError;
-        if (followersError) throw followersError;
-        if (logsError) throw logsError;
+        const queryErrors = [
+          ["user_states", stateError],
+          ["profiles", savedProfileError],
+          ["following", followsError],
+          ["followers", followersError],
+          ["logs", logsError],
+        ] as const;
+        queryErrors.forEach(([source, error]) => {
+          if (error) void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, source, "hydrate_query_failed"));
+        });
 
-        const raw = window.localStorage.getItem(userStorageKey);
-        const localState = raw ? JSON.parse(raw) as Partial<PersistedState> : undefined;
-        const remoteState = stateData?.state as Partial<PersistedState> | undefined;
+        let localState: Partial<PersistedState> | undefined;
+        try {
+          const raw = window.localStorage.getItem(userStorageKey);
+          localState = raw ? JSON.parse(raw) as Partial<PersistedState> : undefined;
+        } catch (error) {
+          void trackProductEvent(authUser.id, "client_error", "storage", errorMetadata(error, "local_state", "local_state_invalid"));
+          window.localStorage.removeItem(userStorageKey);
+        }
+        const remoteState = stateError ? undefined : stateData?.state as Partial<PersistedState> | undefined;
         const savedState = remoteState && applySavedState(remoteState)
           ? remoteState
           : localState && applySavedState(localState)
@@ -503,7 +530,7 @@ export default function App() {
             : undefined;
         if (!savedState) resetAccount();
 
-        if (savedProfile && active) {
+        if (!savedProfileError && savedProfile && active) {
           setProfile((current) => ({
             ...current,
             displayName: savedProfile.display_name || current.displayName,
@@ -522,22 +549,28 @@ export default function App() {
           ]);
         }
 
-        if (active) {
+        if (!followsError && active) {
           setFollowing((followedRows || []).map((row: { followed_id: string }) => row.followed_id));
+        }
+        if (!followersError && active) {
           setFollowerCount(followers || 0);
         }
 
-        const remoteLogs = (logRows as LogRow[] | null)?.map(rowToLog) || [];
-        if (active) setLogs(remoteLogs);
-      } catch {
-        void trackProductEvent(authUser.id, "client_error", "sync", { code: "hydrate_failed" });
+        if (!logsError) {
+          const remoteLogs = (logRows as LogRow[] | null)?.map(rowToLog) || [];
+          if (active) setLogs(remoteLogs);
+        } else if (active && Array.isArray(localState?.logs)) {
+          setLogs(localState.logs);
+        }
+      } catch (error) {
+        void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "hydrate_account", "hydrate_rejected"));
         try {
           const raw = window.localStorage.getItem(userStorageKey);
           const localState = raw ? JSON.parse(raw) as Partial<PersistedState> : undefined;
           if (!localState || !applySavedState(localState)) resetAccount();
           else if (active && Array.isArray(localState.logs)) setLogs(localState.logs);
-        } catch {
-          void trackProductEvent(authUser.id, "client_error", "storage", { code: "local_state_invalid" });
+        } catch (storageError) {
+          void trackProductEvent(authUser.id, "client_error", "storage", errorMetadata(storageError, "local_state", "local_state_invalid"));
           window.localStorage.removeItem(userStorageKey);
           resetAccount();
         }
@@ -563,8 +596,8 @@ export default function App() {
           .order("id", { ascending: false });
         if (error) throw error;
         if (active) setLogs((data as LogRow[] | null)?.map(rowToLog) || []);
-      } catch {
-        void trackProductEvent(authUser.id, "client_error", "sync", { code: "log_refresh_failed" });
+      } catch (error) {
+        void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "logs", "log_refresh_failed"));
       } finally {
         refreshing = false;
       }
@@ -582,7 +615,11 @@ export default function App() {
         { event: "*", schema: "public", table: "logs", filter: `user_id=eq.${authUser.id}` },
         () => { void refreshLogs(); },
       )
-      .subscribe();
+      .subscribe((status, error) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "logs_realtime", "realtime_failed"));
+        }
+      });
     return () => {
       active = false;
       window.removeEventListener("focus", onFocus);
@@ -606,9 +643,9 @@ export default function App() {
           { user_id: authUser.id, state: remoteState, updated_at: new Date().toISOString() },
           { onConflict: "user_id" },
         );
-        if (error) void trackProductEvent(authUser.id, "client_error", "sync", { code: "state_sync_failed" });
-      } catch {
-        void trackProductEvent(authUser.id, "client_error", "sync", { code: "state_sync_rejected" });
+        if (error) void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "user_states", "state_sync_failed"));
+      } catch (error) {
+        void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "user_states", "state_sync_rejected"));
       }
     }, 500);
     return () => window.clearTimeout(syncTimer);
@@ -634,13 +671,13 @@ export default function App() {
           updated_at: new Date().toISOString(),
         }, { onConflict: "user_id" });
         if (profileError) {
-          void trackProductEvent(authUser.id, "client_error", "profile", { code: "profile_sync_failed" });
+          void trackProductEvent(authUser.id, "client_error", "profile", errorMetadata(profileError, "profiles", "profile_sync_failed"));
           return;
         }
         const { data, error } = await supabase.rpc("get_leaderboard", { leaderboard_period: "this_month" });
         if (!error && active) setLeaderboard((data || []) as LeaderboardEntry[]);
-      } catch {
-        void trackProductEvent(authUser.id, "client_error", "profile", { code: "profile_sync_rejected" });
+      } catch (error) {
+        void trackProductEvent(authUser.id, "client_error", "profile", errorMetadata(error, "profiles", "profile_sync_rejected"));
       }
     }, 700);
     return () => { active = false; window.clearTimeout(timer); };
@@ -706,8 +743,8 @@ export default function App() {
           .upsert(logToRow(l, authUser.id), { onConflict: "user_id,id" });
         if (error) throw error;
         void trackProductEvent(authUser.id, "log_created", "logs", { type: x.type, category: x.category });
-      } catch {
-        void trackProductEvent(authUser.id, "client_error", "logs", { code: "create_failed" });
+      } catch (error) {
+        void trackProductEvent(authUser.id, "client_error", "logs", errorMetadata(error, "logs", "create_failed"));
         setToast("Could not save this log. Please try again.");
         setTimeout(() => setToast(""), 2600);
         return;
@@ -727,8 +764,8 @@ export default function App() {
           .upsert(logToRow(updated, authUser.id), { onConflict: "user_id,id" });
         if (error) throw error;
         void trackProductEvent(authUser.id, "log_updated", "logs", { type: data.type, category: data.category });
-      } catch {
-        void trackProductEvent(authUser.id, "client_error", "logs", { code: "update_failed" });
+      } catch (error) {
+        void trackProductEvent(authUser.id, "client_error", "logs", errorMetadata(error, "logs", "update_failed"));
         setToast("Could not update this log. Please try again.");
         setTimeout(() => setToast(""), 2600);
         return;
@@ -750,8 +787,8 @@ export default function App() {
         if (error) throw error;
         if (!data?.length) throw new Error("Log was not deleted");
         void trackProductEvent(authUser.id, "log_deleted", "logs");
-      } catch {
-        void trackProductEvent(authUser.id, "client_error", "logs", { code: "delete_failed" });
+      } catch (error) {
+        void trackProductEvent(authUser.id, "client_error", "logs", errorMetadata(error, "logs", "delete_failed"));
         setToast("Could not delete this log. Please try again.");
         setTimeout(() => setToast(""), 2600);
         return;
