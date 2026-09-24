@@ -4232,6 +4232,8 @@ textarea:focus-visible {
 
 .founder-feed span b { display: block; font-size: 12px; }
 .founder-feed span small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; font-weight: 750; }
+.founder-feed span em { display: block; max-width: 540px; margin-top: 5px; color: var(--ink); font-size: 9px; font-style: normal; line-height: 1.4; overflow-wrap: anywhere; }
+.founder-feed span em.hint { color: var(--blue); }
 
 .founder-feedback {
   display: grid;
