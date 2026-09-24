@@ -16,7 +16,7 @@ type DashboardData = {
   feedbackTotal: number;
   dailyActivity: Array<{ day: string; users: number; events: number }>;
   topFeatures: Array<{ event: string; count: number; users: number }>;
-  recentErrors: Array<{ createdAt: string; area: string; code: string }>;
+  recentErrors: Array<{ createdAt: string; area: string; code: string; source: string; errorCode: string; status: number; message: string; hint: string }>;
   recentFeedback: Array<{ createdAt: string; name: string; type: string; message: string }>;
 };
 
@@ -108,7 +108,7 @@ export default function FounderDashboard() {
         <article className="founder-panel">
           <header><div><span>RELIABILITY</span><h2>Recent errors</h2></div><b className={data.errorsToday ? "founder-bad" : "founder-good"}>{data.errorsToday ? <AlertTriangle /> : <CheckCircle2 />}{data.errorsToday ? `${data.errorsToday} FOUND` : "ALL CLEAR"}</b></header>
           <div className="founder-feed">
-            {data.recentErrors.length ? data.recentErrors.map((item, index) => <div key={`${item.createdAt}-${index}`}><i className="error" /><span><b>{titleCase(item.code)}</b><small>{titleCase(item.area)} · {shortTime(item.createdAt)}</small></span></div>) : <p>No errors recorded in the last seven days.</p>}
+            {data.recentErrors.length ? data.recentErrors.map((item, index) => <div key={`${item.createdAt}-${index}`}><i className="error" /><span><b>{titleCase(item.code)}</b><small>{titleCase(item.source || item.area)}{item.errorCode ? ` · ${item.errorCode}` : ""}{item.status ? ` · ${item.status}` : ""} · {shortTime(item.createdAt)}</small>{item.message && <em>{item.message}</em>}{item.hint && <em className="hint">{item.hint}</em>}</span></div>) : <p>No errors recorded in the last seven days.</p>}
           </div>
         </article>
 
