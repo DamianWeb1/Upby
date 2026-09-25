@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m as motion } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
+import MonthlyGoal from "./MonthlyGoal";
 import {
   ArrowUpRight,
   BarChart3,
@@ -1009,6 +1010,7 @@ function HomeView({
             <button className="loss" onClick={() => setSheet("loss")}><TrendingDown />LOG FIRST LOSS</button>
           </div>
         </section>
+        <MonthlyGoal key={authUserId || "demo"} client={supabase} userId={authUserId} logs={logs} />
         <section className="first-next">
           <div className="first-next-copy">
             <span>YOUR FIRST ENTRY</span>
@@ -1077,6 +1079,7 @@ function HomeView({
           </button>
         </div>
       </section>
+      <MonthlyGoal key={authUserId || "demo"} client={supabase} userId={authUserId} logs={logs} />
       {freshStart && firstEntry && (
         <motion.section className={`first-unlocked ${firstEntry.type}`} initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }}>
           <i>{firstEntry.type === "win" ? <Trophy /> : <ShieldCheck />}</i>
@@ -1956,7 +1959,20 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     else { await navigator.clipboard.writeText(url); setFeedbackStatus("Profile link copied"); setTimeout(() => setFeedbackStatus(""), 1800); }
     void trackProductEvent(authUser?.id, "profile_shared", "profile");
   };
-  const exportData = () => {
+  const [exportStatus, setExportStatus] = useState("");
+  const exportData = async () => {
+    setExportStatus("Preparing export…");
+    let monthlyGoals: unknown[] = [];
+    if (authUser && !demoMode) {
+      try {
+        const { data, error } = await supabase.from("monthly_goals").select("month,target").eq("user_id", authUser.id).order("month", { ascending: false });
+        if (error) throw error;
+        monthlyGoals = data || [];
+      } catch {
+        setExportStatus("Could not load goals for your export. Please try again.");
+        return;
+      }
+    }
     const payload = {
       exportedAt: new Date().toISOString(),
       account: { email: authUser?.email || null },
@@ -1965,12 +1981,14 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
       totals: { wins, losses, net },
       logs,
       social: { following: followingCount, followers: followerCount },
+      monthlyGoals,
     };
     const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;
     link.download = `upby-${profile.username}-data.json`;
     link.click();
+    setExportStatus("Export downloaded");
     URL.revokeObjectURL(url);
     void trackProductEvent(authUser?.id, "data_exported", "account");
   };
@@ -2165,6 +2183,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
               <button onClick={signOut}><LogOut />{demoMode ? "EXIT DEMO" : "SIGN OUT"}</button>
             </div>
             {!demoMode && <div className="account-tools"><button onClick={exportData}><Download />EXPORT DATA</button><button onClick={() => { setFeedbackStatus(""); setFeedbackOpen(true); }}><MessageSquare />SEND FEEDBACK</button><button className="danger" onClick={() => { setDeleteConfirm(""); setDeleteError(""); setDeleteOpen(true); }}><Trash2 />DELETE ACCOUNT</button></div>}
+            {exportStatus && <p role="status">{exportStatus}</p>}
             <nav className="account-links"><a href="/privacy">PRIVACY</a><a href="/terms">TERMS</a></nav>
           </motion.section>
         )}
