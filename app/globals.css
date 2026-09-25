@@ -4174,6 +4174,7 @@ textarea:focus-visible {
 .founder-panel header > b svg { width: 14px; height: 14px; }
 .founder-panel header > b.founder-good { background: #c8ef4345; }
 .founder-panel header > b.founder-bad { background: #ff6c6435; }
+.founder-panel-icon { width: 24px; height: 24px; color: var(--blue); }
 
 .founder-bars {
   display: grid;
@@ -4211,6 +4212,7 @@ textarea:focus-visible {
 .founder-list > div > span { font-size: 13px; font-weight: 900; }
 .founder-list small { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; }
 .founder-list strong { font-size: 20px; }
+.founder-regions > div > span { text-transform: none; }
 .founder-list p,
 .founder-feed > p,
 .founder-feedback > p { color: var(--muted); font-weight: 700; }

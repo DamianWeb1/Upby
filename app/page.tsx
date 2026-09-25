@@ -401,6 +401,7 @@ export default function App() {
     [hydrated, setHydrated] = useState(false),
     [authReady, setAuthReady] = useState(false),
     [authUser, setAuthUser] = useState<any>(null),
+    [countryCode, setCountryCode] = useState(""),
     [demoMode, setDemoMode] = useState(false),
     [sheet, setSheet] = useState<"win" | "loss" | null>(null),
     [editing, setEditing] = useState<Log | null>(null),
@@ -454,6 +455,17 @@ export default function App() {
       listener.subscription.unsubscribe();
     };
   }, []);
+  useEffect(() => {
+    if (!authUser || demoMode) return;
+    let active = true;
+    void fetch("/api/region", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Region lookup failed")))
+      .then((result: { country?: string }) => {
+        if (active && /^[A-Z]{2}$/.test(result.country || "")) setCountryCode(result.country || "");
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [authUser?.id, demoMode]);
   useEffect(() => {
     if (!authReady) return;
     if (!authUser) {
@@ -668,6 +680,7 @@ export default function App() {
           show_screenshots: Boolean(prefs[3]),
           leaderboard_enabled: Boolean(prefs[4]),
           public_profile_enabled: Boolean(prefs[5]),
+          ...(countryCode ? { country_code: countryCode } : {}),
           updated_at: new Date().toISOString(),
         }, { onConflict: "user_id" });
         if (profileError) {
@@ -681,7 +694,7 @@ export default function App() {
       }
     }, 700);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [hydrated, authUser?.id, stage, demoMode, profile.displayName, profile.username, profile.avatarUrl, profile.bio, profile.xProfile, prefs, logs]);
+  }, [hydrated, authUser?.id, stage, demoMode, profile.displayName, profile.username, profile.avatarUrl, profile.bio, profile.xProfile, prefs, logs, countryCode]);
   useEffect(() => {
     if (!hydrated || !authUser || demoMode) return;
     void trackProductEvent(authUser.id, "screen_view", "navigation", { screen: stage === "app" ? tab : stage });

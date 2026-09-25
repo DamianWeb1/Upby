@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { Activity, AlertTriangle, ArrowLeft, CheckCircle2, MessageSquare, RefreshCw, ScrollText, UserCheck, Users } from "lucide-react";
+import { Activity, AlertTriangle, ArrowLeft, CheckCircle2, Globe2, MessageSquare, RefreshCw, ScrollText, UserCheck, Users } from "lucide-react";
 
 type DashboardData = {
   totalUsers: number;
@@ -16,6 +16,7 @@ type DashboardData = {
   feedbackTotal: number;
   dailyActivity: Array<{ day: string; users: number; events: number }>;
   topFeatures: Array<{ event: string; count: number; users: number }>;
+  userRegions: Array<{ country: string; users: number }>;
   recentErrors: Array<{ createdAt: string; area: string; code: string; source: string; errorCode: string; status: number; message: string; hint: string }>;
   recentFeedback: Array<{ createdAt: string; name: string; type: string; message: string }>;
 };
@@ -28,6 +29,11 @@ const supabase = createClient(
 const titleCase = (value: string) => value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 const shortDate = (value: string) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
 const shortTime = (value: string) => new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(value));
+const countryName = (value: string) => {
+  if (!value || value === "unknown") return "Unknown";
+  try { return new Intl.DisplayNames(["en"], { type: "region" }).of(value) || value; }
+  catch { return value; }
+};
 
 export default function FounderDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -102,6 +108,13 @@ export default function FounderDashboard() {
           <header><div><span>FEATURES</span><h2>Most used</h2></div></header>
           <div className="founder-list">
             {data.topFeatures.length ? data.topFeatures.map((item, index) => <div key={item.event}><b>#{index + 1}</b><span>{titleCase(item.event)}<small>{item.users} users</small></span><strong>{item.count}</strong></div>) : <p>No feature events yet.</p>}
+          </div>
+        </article>
+
+        <article className="founder-panel">
+          <header><div><span>AUDIENCE</span><h2>User regions</h2></div><Globe2 className="founder-panel-icon" /></header>
+          <div className="founder-list founder-regions">
+            {(data.userRegions || []).length ? data.userRegions.map((item, index) => <div key={item.country}><b>#{index + 1}</b><span>{countryName(item.country)}<small>{item.country === "unknown" ? "Updates when they return" : item.country}</small></span><strong>{item.users}</strong></div>) : <p>Regions appear as members return to UPBY.</p>}
           </div>
         </article>
 

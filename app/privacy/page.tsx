@@ -6,7 +6,7 @@ export default function PrivacyPage() {
   return (
     <main className="legal-page">
       <a className="legal-back" href="/">U↗ UPBY</a>
-      <span>LAST UPDATED SEPTEMBER 20, 2026</span>
+      <span>LAST UPDATED SEPTEMBER 25, 2026</span>
       <h1>Privacy Policy</h1>
       <p>UPBY stores the information needed to run your account and sync your progress across devices.</p>
       <section>
@@ -19,7 +19,7 @@ export default function PrivacyPage() {
       </section>
       <section>
         <h2>Product analytics</h2>
-        <p>UPBY records basic feature-use counts and generic error categories so we can improve reliability. Analytics do not include your log amounts, titles, notes, email address, or private profile content.</p>
+        <p>UPBY records basic feature-use counts, generic error categories, and your country so we can understand regional usage and improve reliability. We do not store your IP address, city, precise location, log amounts, titles, notes, email address, or private profile content in product analytics.</p>
       </section>
       <section>
         <h2>Public information</h2>
