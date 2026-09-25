@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m as motion } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 import MonthlyGoal from "./MonthlyGoal";
+import { emptyFilters, filterLogs, logTotals, type LogFilters } from "./log-filters";
 import {
   ArrowUpRight,
   BarChart3,
@@ -984,6 +985,23 @@ function HomeView({
   authUserId,
 }: any) {
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [filters, setFilters] = useState<LogFilters>(emptyFilters);
+  const [viewAll, setViewAll] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(20);
+  const filteredLogs = useMemo(() => filterLogs(logs as Log[], filters), [logs, filters]);
+  const totals = useMemo(() => logTotals(filteredLogs), [filteredLogs]);
+  const categories = useMemo(() => Array.from(new Set((logs as Log[]).map(log => log.category))).sort(), [logs]);
+  const hasFilters = Object.values(filters).some(Boolean);
+  const browsing = viewAll || hasFilters;
+  const shownLogs = filteredLogs.slice(0, browsing ? visibleCount : 5);
+  const invalidRange = !!(filters.from && filters.to && filters.from > filters.to);
+  const updateFilter = (key: keyof LogFilters, value: string) => {
+    setFilters(current => ({ ...current, [key]: value }));
+    setVisibleCount(20);
+    setExpanded(null);
+  };
+  const resetFilters = () => { setFilters(emptyFilters); setVisibleCount(20); };
+  const formatTotal = (value: number) => value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
   const [streakDay, setStreakDay] = useState<number | null>(null);
   const firstEntry = freshStart ? logs[0] as Log | undefined : undefined;
   const isEmpty = freshStart && logs.length === 0;
@@ -1153,9 +1171,32 @@ function HomeView({
         </button>
       </div>
       <section className="recent">
-        <Title over="THE LATEST" title="Recent logs" action="View all" />
+        <div className="title">
+          <div><span>YOUR ACTIVITY</span><h2>{browsing ? "Your logs" : "Recent logs"}</h2></div>
+          <button onClick={() => { setViewAll(!browsing); resetFilters(); setExpanded(null); }}>
+            {browsing ? "Recent only" : "View all"}<ArrowUpRight />
+          </button>
+        </div>
+        <section className="log-browser" aria-label="Search and filter logs">
+          <label className="log-search"><Search size={18} /><input type="search" aria-label="Search log titles and notes" placeholder="Search titles or notes" value={filters.query} onChange={e => updateFilter("query", e.target.value)} /></label>
+          <details>
+            <summary>Filters{hasFilters ? " · Active" : ""}</summary>
+            <div className="log-filter-fields">
+              <label>Category<select value={filters.category} onChange={e => updateFilter("category", e.target.value)}><option value="">All categories</option>{categories.map(category => <option key={category} value={category}>{category}</option>)}</select></label>
+              <label>Entry type<select value={filters.type} onChange={e => updateFilter("type", e.target.value)}><option value="">Wins and losses</option><option value="win">Wins</option><option value="loss">Losses</option></select></label>
+              <label>From<input type="date" value={filters.from} onChange={e => updateFilter("from", e.target.value)} /></label>
+              <label>To<input type="date" value={filters.to} onChange={e => updateFilter("to", e.target.value)} /></label>
+            </div>
+          </details>
+          {hasFilters && <button className="log-clear" onClick={resetFilters}>Clear filters</button>}
+          {invalidRange ? <p role="alert">Choose an end date on or after the start date.</p> : browsing && <div className="log-filter-results" role="status">
+            <p>{filteredLogs.length} {filteredLogs.length === 1 ? "entry" : "entries"}{hasFilters ? " matching" : " total"}</p>
+            <dl><div><dt>Wins</dt><dd>{formatTotal(totals.wins)}</dd></div><div><dt>Losses</dt><dd>{formatTotal(totals.losses)}</dd></div><div><dt>Net</dt><dd>{formatTotal(totals.net)}</dd></div></dl>
+          </div>}
+        </section>
         <div>
-          {logs.slice(0, 5).map((l: Log) => (
+          {!invalidRange && filteredLogs.length === 0 && <p className="log-no-results">No matching logs. Try another search or clear your filters.</p>}
+          {shownLogs.map((l: Log) => (
             <motion.article
               layout
               initial={{ opacity: 0, x: -20 }}
@@ -1198,7 +1239,7 @@ function HomeView({
                     <p>{l.note || "No note added for this log."}</p>
                     <div>
                       {l.screenshot && <span><Camera /> Screenshot attached</span>}
-                      <span><CalendarDays /> {l.dateKey ? new Date(`${l.dateKey}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "September 8, 2026"}</span>
+                      <span><CalendarDays /> {l.dateKey ? new Date(`${l.dateKey}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : l.date || "Date unavailable"}</span>
                     </div>
                     <footer>
                       <button onClick={() => setShare(l)}><Share2 /> Share</button>
@@ -1211,6 +1252,7 @@ function HomeView({
               </AnimatePresence>
             </motion.article>
           ))}
+          {browsing && shownLogs.length < filteredLogs.length && <footer className="log-pagination"><button onClick={() => setVisibleCount(count => count + 20)}>Show more ({filteredLogs.length - shownLogs.length} remaining)</button></footer>}
         </div>
       </section>
     </div>
