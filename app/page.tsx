@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m as motion } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 import MonthlyGoal from "./MonthlyGoal";
+import WeeklySummary from "./WeeklySummary";
 import { emptyFilters, filterLogs, logTotals, type LogFilters } from "./log-filters";
 import {
   ArrowUpRight,
@@ -1640,6 +1641,7 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
   };
   return (
     <div className="page insights">
+      <WeeklySummary logs={logs} />
       <section className="insight-hero">
         <div>
           <button onClick={() => setMonth(Math.min(3, month + 1))}>
