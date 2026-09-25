@@ -4,6 +4,7 @@ import { AnimatePresence, m as motion } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 import MonthlyGoal from "./MonthlyGoal";
 import WeeklySummary from "./WeeklySummary";
+import { currentMonth, shiftMonth, periodLabel, periodSummary, validDateKey, insightMoney, insightSignedMoney, type PeriodSummary } from "./insight-periods";
 import { emptyFilters, filterLogs, logTotals, type LogFilters } from "./log-filters";
 import {
   ArrowUpRight,
@@ -1507,148 +1508,38 @@ function earnedFrom(logs: Log[], net: number) {
     badge === "$10K MONTH" ? net >= 10000 : false
   );
 }
-const recapOptions = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-  "2026 Year",
-];
-const recapData: Record<string, { wins: number; losses: number; logs: string; streak: string; rank: string }> = {
-  January: { wins: 1820, losses: 260, logs: "9 WINS · 2 LOSSES", streak: "6 DAY STREAK", rank: "#92 GLOBAL" },
-  February: { wins: 2240, losses: 410, logs: "11 WINS · 3 LOSSES", streak: "8 DAY STREAK", rank: "#81 GLOBAL" },
-  March: { wins: 2680, losses: 530, logs: "12 WINS · 4 LOSSES", streak: "10 DAY STREAK", rank: "#70 GLOBAL" },
-  April: { wins: 1950, losses: 380, logs: "8 WINS · 3 LOSSES", streak: "7 DAY STREAK", rank: "#76 GLOBAL" },
-  May: { wins: 3140, losses: 620, logs: "14 WINS · 5 LOSSES", streak: "12 DAY STREAK", rank: "#58 GLOBAL" },
-  June: { wins: 2460, losses: 520, logs: "10 WINS · 4 LOSSES", streak: "9 DAY STREAK", rank: "#61 GLOBAL" },
-  July: { wins: 1180, losses: 1600, logs: "7 WINS · 8 LOSSES", streak: "5 DAY STREAK", rank: "#108 GLOBAL" },
-  August: { wins: 3860, losses: 680, logs: "16 WINS · 5 LOSSES", streak: "11 DAY STREAK", rank: "#47 GLOBAL" },
-  September: { wins: 4920, losses: 640, logs: "18 WINS · 5 LOSSES", streak: "12 DAY STREAK", rank: "#38 GLOBAL" },
-  October: { wins: 0, losses: 0, logs: "NO LOGS YET", streak: "0 DAY STREAK", rank: "UNRANKED" },
-  November: { wins: 0, losses: 0, logs: "NO LOGS YET", streak: "0 DAY STREAK", rank: "UNRANKED" },
-  December: { wins: 0, losses: 0, logs: "NO LOGS YET", streak: "0 DAY STREAK", rank: "UNRANKED" },
-  "2026 Year": { wins: 24250, losses: 5040, logs: "105 WINS · 39 LOSSES", streak: "21 DAY LONGEST STREAK", rank: "#38 BEST RANK" },
-};
-const progressDays = [
-  { day: 1, value: 220 },
-  { day: 3, value: 510 },
-  { day: 5, value: 390 },
-  { day: 8, value: 1040 },
-  { day: 11, value: 860 },
-  { day: 14, value: 1610 },
-  { day: 17, value: 2310 },
-  { day: 20, value: 2090 },
-  { day: 23, value: 3180 },
-  { day: 26, value: 3770 },
-  { day: 30, value: 4280 },
-];
-function ProgressPath() {
-  const [active, setActive] = useState(8);
-  const points = progressDays.map((item, i) => ({
-    ...item,
-    x: 18 + i * 46.4,
-    y: 128 - (item.value / 4280) * 96,
-  }));
-  const line = points.map((point) => point.x + "," + point.y).join(" ");
-  const current = points[active];
-  return (
-    <div className="progress-path">
-      <div className="progress-tip" style={{ left: (current.x / 500) * 100 + "%" }}>
-        <b>{current.value >= 0 ? "+" : ""}{money(current.value)}</b>
-        <span>SEP {current.day}</span>
-      </div>
-      <svg viewBox="0 0 500 150" role="img" aria-label="Interactive monthly progress path">
-        <defs>
-          <linearGradient id="pathFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#c8ef43" stopOpacity=".48" />
-            <stop offset="100%" stopColor="#c8ef43" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <polygon points={line + " 482,145 18,145"} fill="url(#pathFill)" />
-        <motion.polyline
-          points={line}
-          fill="none"
-          stroke="#c8ef43"
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          initial={{ pathLength: 0 }}
-          animate={{ pathLength: 1 }}
-          transition={{ duration: .8 }}
-        />
-        {points.map((point, i) => (
-          <circle
-            key={point.day}
-            cx={point.x}
-            cy={point.y}
-            r={i === active ? 8 : 5}
-            fill={i === active ? "#fffdf7" : "#c8ef43"}
-            stroke="#171b38"
-            strokeWidth="3"
-            onPointerEnter={() => setActive(i)}
-            onPointerDown={() => setActive(i)}
-          />
-        ))}
-      </svg>
-      <footer><span>SEP 1</span><span>DRAG OR TAP A POINT</span><span>SEP 30</span></footer>
-    </div>
-  );
-}
 function Insights({ net, wins, losses, logs, freshStart }: any) {
-  const [month, setMonth] = useState(0),
-    [pop, setPop] = useState<string | null>(null),
-    [recapPeriod, setRecapPeriod] = useState("September"),
-    [periodOpen, setPeriodOpen] = useState(false),
-    months = ["September", "August", "July", "June"];
-  const nums = freshStart ? [net, 0, 0, 0] : [net, 3180, -420, 1940];
-  const demoDayValues = [
-    220, 450, 0, -120, 680, 310, 0, 540, 760, -80,
-    420, 0, 910, 350, -240, 620, 480, 0, 700, -160,
-    840, 390, 0, 560, 290, 0, 0, 0, 0, 0,
-  ];
-  const monthIndexes = [8, 7, 6, 5];
-  const activeLogs = freshStart ? logs.filter((log: Log) => log.dateKey ? new Date(`${log.dateKey}T00:00:00`).getMonth() === monthIndexes[month] : month === 0) : logs;
-  const activeWins = freshStart ? activeLogs.filter((log: Log) => log.type === "win").reduce((total: number, log: Log) => total + log.amount, 0) : wins;
-  const activeLosses = freshStart ? activeLogs.filter((log: Log) => log.type === "loss").reduce((total: number, log: Log) => total + log.amount, 0) : losses;
-  const activeNet = freshStart ? activeWins - activeLosses : nums[month];
-  const winCount = freshStart ? activeLogs.filter((log: Log) => log.type === "win").length : 18;
-  const lossCount = freshStart ? activeLogs.filter((log: Log) => log.type === "loss").length : 5;
-  const streak = freshStart ? (logs.length ? 1 : 0) : 12;
-  const freshDays = Array.from({ length: 30 }, () => 0);
-  activeLogs.forEach((log: Log) => {
-    const day = log.dateKey ? new Date(`${log.dateKey}T00:00:00`).getDate() : new Date().getDate();
-    freshDays[Math.min(29, day - 1)] += log.type === "win" ? log.amount : -log.amount;
-  });
-  const dayValues = freshStart ? freshDays : demoDayValues;
-  const categoryTotals = activeLogs.reduce((totals: Record<string, number>, log: Log) => {
-    totals[log.category] = (totals[log.category] || 0) + (log.type === "win" ? log.amount : -log.amount);
-    return totals;
-  }, {});
-  const categoryItems = freshStart
-    ? (Object.entries(categoryTotals) as Array<[string, number]>).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 5).map(([name, value], index) => [name, signedMoney(value), ["big", "mid", "coral", "small", ""][index]])
-    : [["Bounties", "$1,850", "big"], ["Dev", "$1,420", "mid"], ["Content", "$840", "coral"], ["X Money", "$510", "small"], ["Other", "$300", ""]];
+  const [month, setMonth] = useState(() => currentMonth());
+  const [pop, setPop] = useState<string | null>(null);
+  const [recapPeriod, setRecapPeriod] = useState(() => currentMonth());
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const [recapYear, setRecapYear] = useState(() => currentMonth().slice(0, 4));
+  const summary = useMemo(() => periodSummary(logs as Log[], month), [logs, month]);
+  const { wins: activeWins, losses: activeLosses, net: activeNet, winCount, lossCount, dayValues } = summary;
+  const monthLabel = periodLabel(month);
+  const monthShort = new Date(`${month}-01T12:00:00`).toLocaleDateString("en-US", {month:"short"}).toUpperCase();
+  const chartMax = Math.max(1, ...dayValues.map(Math.abs));
+  const money = insightMoney, signedMoney = insightSignedMoney;
+  const categoryItems = summary.categories.slice(0, 5).map((item, index) => [item.name, signedMoney(item.net), ["big", "mid", "coral", "small", ""][index]]);
   const bestCategory = categoryItems.length ? String(categoryItems[0][0]) : "No logs yet";
   const earned = freshStart ? earnedFrom(logs, net) : badges.slice(0, 7);
-  const recapFor = (period: string) => {
-    if (!freshStart) return recapData[period];
-    const periodLogs = period === "2026 Year" ? logs : logs.filter((log: Log) => {
-      const logMonth = log.dateKey ? new Date(`${log.dateKey}T00:00:00`).toLocaleDateString("en-US", { month: "long" }) : "September";
-      return logMonth === period;
-    });
-    const periodWins = periodLogs.filter((log: Log) => log.type === "win").reduce((total: number, log: Log) => total + log.amount, 0);
-    const periodLosses = periodLogs.filter((log: Log) => log.type === "loss").reduce((total: number, log: Log) => total + log.amount, 0);
-    const periodWinCount = periodLogs.filter((log: Log) => log.type === "win").length;
-    const periodLossCount = periodLogs.filter((log: Log) => log.type === "loss").length;
-    return { wins: periodWins, losses: periodLosses, logs: periodLogs.length ? `${periodWinCount} WINS · ${periodLossCount} LOSSES` : "NO LOGS YET", streak: `${periodLogs.length ? 1 : 0} DAY STREAK`, rank: periodLogs.length ? "#184 GLOBAL" : "UNRANKED" };
-  };
+  const years = Array.from(new Set([currentMonth().slice(0,4), recapYear, ...(logs as Log[]).filter(log => validDateKey(log.dateKey)).map(log => log.dateKey!.slice(0,4))])).sort().reverse();
+  const recapOptions = Array.from({length:12}, (_, index) => `${recapYear}-${String(index+1).padStart(2,"0")}`);
+  const recapFor = (period: string) => periodSummary(logs as Log[], period);
+  const yearSummary = recapFor(recapYear);
+  const undatedCount = (logs as Log[]).filter(log => !validDateKey(log.dateKey)).length;
   return (
     <div className="page insights">
       <WeeklySummary logs={logs} />
+      <label className="insight-month-picker">Choose month<input type="month" value={month} max={currentMonth()} onChange={e => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value) && e.target.value <= currentMonth()) setMonth(e.target.value); }} /></label>
+      {undatedCount > 0 && <p className="insight-date-note">{undatedCount} undated {undatedCount === 1 ? "entry is" : "entries are"} excluded. Edit the entry date to include it in Insights.</p>}
       <section className="insight-hero">
         <div>
-          <button onClick={() => setMonth(Math.min(3, month + 1))}>
+          <button aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>
             <ChevronLeft />
           </button>
-          <span>YOUR {months[month].toUpperCase()}</span>
-          <button onClick={() => setMonth(Math.max(0, month - 1))}>
+          <span>YOUR {monthLabel.toUpperCase()}</span>
+          <button aria-label="Next month" disabled={month >= currentMonth()} onClick={() => setMonth(shiftMonth(month, 1))}>
             <ChevronRight />
           </button>
         </div>
@@ -1660,21 +1551,22 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
           {signedMoney(activeNet)}
         </motion.strong>
         <small>NET PROGRESS</small>
-        <div className="daily-bars" aria-label={`Daily progress for ${months[month]}`}>
+        <div className="daily-bars" aria-label={`Daily progress for ${monthLabel}`}>
           {dayValues.map((value, index) => (
             <i
               key={index}
               className={
                 value > 0 ? "positive" : value < 0 ? "negative" : "empty"
               }
-              style={{ height: value === 0 ? "14%" : Math.max(24, Math.abs(value) / 9.5) + "%" }}
+              title={`${month}-${String(index + 1).padStart(2, "0")}: ${signedMoney(value)}`}
+              style={{ height: value === 0 ? "4%" : Math.max(8, Math.abs(value) / chartMax * 100) + "%" }}
             />
           ))}
         </div>
         <footer className="daily-axis">
-          <span>{months[month].slice(0, 3).toUpperCase()} 1</span>
+          <span>{monthShort} 1</span>
           <b>DAILY NET</b>
-          <span>{months[month].slice(0, 3).toUpperCase()} 30</span>
+          <span>{monthShort} {dayValues.length}</span>
         </footer>
       </section>
       <section className="stats">
@@ -1684,7 +1576,7 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
           ["TOTAL LOSSES", money(activeLosses)],
           ["NUMBER OF WINS", String(winCount)],
           ["NUMBER OF LOSSES", String(lossCount)],
-          ["LONGEST STREAK", freshStart ? `${streak} day${streak === 1 ? "" : "s"}` : "21 days"],
+          ["LONGEST STREAK", `${summary.longestStreak} day${summary.longestStreak === 1 ? "" : "s"}`],
           ["BEST CATEGORY", bestCategory],
         ].map((x, i) => (
           <div className={i === 0 ? "major" : ""} key={x[0]}>
@@ -1701,15 +1593,15 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
           ))}
         </div>
         <div className="heat-grid">
-          {Array.from({ length: 30 }, (_, i) => {
-            const value = dayValues[i];
+          {Array.from({length:summary.weekdayOffset}, (_, i) => <div key={`blank-${i}`} className="calendar-blank" aria-hidden="true" />)}
+          {dayValues.map((value, i) => {
             return (
               <div
                 className={value > 0 ? "positive" : value < 0 ? "negative" : "empty"}
                 key={i}
               >
                 <span>{i + 1}</span>
-                <b>{value === 0 ? "No activity" : (value > 0 ? "+" : "") + money(value)}</b>
+                <b>{!summary.dayActive[i] ? "No activity" : signedMoney(value)}</b>
               </div>
             );
           })}
@@ -1750,10 +1642,10 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
         <div>
           <span>MONTH OR YEAR</span>
           <h2>Create your recap</h2>
-          <p>Turn any month or your full year into one shareable card.</p>
+          <p>Review any month or year, then share your totals.</p>
           <div className="year-total">
-            <span>2026 TOTAL</span>
-            <strong>{freshStart ? signedMoney(net) : "+$19,210"}</strong>
+            <span>{recapYear} TOTAL</span>
+            <strong>{signedMoney(yearSummary.net)}</strong>
           </div>
         </div>
         <div className="recap-controls">
@@ -1761,7 +1653,7 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
             <span>PERIOD</span>
             <button className="period-trigger" onClick={() => setPeriodOpen(!periodOpen)}>
               <CalendarDays />
-              <b>{recapPeriod}</b>
+              <b>{periodLabel(recapPeriod)}</b>
               <ChevronDown />
             </button>
             <AnimatePresence>
@@ -1773,24 +1665,25 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
                   exit={{ opacity: 0, y: 8, scale: .97 }}
                 >
                   <header><span>CHOOSE A RECAP</span><button onClick={() => setPeriodOpen(false)}><X /></button></header>
+                  <label className="recap-year-picker">Year<select value={recapYear} onChange={e => { setRecapYear(e.target.value); setRecapPeriod(e.target.value); }}>{years.map(year => <option key={year}>{year}</option>)}</select></label>
                   <div className="month-options">
-                    {recapOptions.slice(0, 12).map((period) => (
+                    {recapOptions.map((period) => (
                       <button
                         className={recapPeriod === period ? "active" : ""}
                         key={period}
                         onClick={() => { setRecapPeriod(period); setPeriodOpen(false); }}
                       >
-                        <span>{period.slice(0, 3).toUpperCase()}</span>
-                        <small>{recapFor(period).wins || recapFor(period).losses ? signedMoney(recapFor(period).wins - recapFor(period).losses) : "No logs"}</small>
+                        <span>{periodLabel(period).slice(0, 3).toUpperCase()}</span>
+                        <small>{recapFor(period).entries.length ? signedMoney(recapFor(period).wins - recapFor(period).losses) : "No logs"}</small>
                       </button>
                     ))}
                   </div>
                   <button
-                    className={recapPeriod === "2026 Year" ? "year-option active" : "year-option"}
-                    onClick={() => { setRecapPeriod("2026 Year"); setPeriodOpen(false); }}
+                    className={recapPeriod === recapYear ? "year-option active" : "year-option"}
+                    onClick={() => { setRecapPeriod(recapYear); setPeriodOpen(false); }}
                   >
-                    <span><Sparkles /> 2026 YEAR RECAP</span>
-                    <b>{freshStart ? signedMoney(net) : "+$19,210"}</b>
+                    <span><Sparkles /> {recapYear} YEAR RECAP</span>
+                    <b>{signedMoney(yearSummary.net)}</b>
                   </button>
                 </motion.div>
               )}
@@ -1852,12 +1745,21 @@ function Badge({ pop, net, recapPeriod, recapOverride, close }: any) {
     </motion.div>
   );
 }
-function RecapStory({ period, recapOverride }: { period: string; recapOverride?: { wins: number; losses: number; logs: string; streak: string; rank: string } }) {
+function RecapStory({ period, recapOverride }: { period: string; recapOverride: PeriodSummary }) {
   const [slide, setSlide] = useState(0);
-  const recap = recapOverride || recapData[period] || recapData.September;
+  const recap = recapOverride;
+  const money = insightMoney;
+  const label = periodLabel(period);
+  const [shareStatus, setShareStatus] = useState("");
+  const shareRecap = async () => {
+    const text = `My ${label} on UPBY: ${insightSignedMoney(recap.net)} net. ${money(recap.wins)} wins, ${money(recap.losses)} losses. ${recap.winCount + recap.lossCount} entries.`;
+    try {
+      if (navigator.share) await navigator.share({title: "My UPBY recap", text});
+      else { await navigator.clipboard.writeText(text); setShareStatus("Recap copied. Paste it into your post."); }
+    } catch (error) { if (!(error instanceof Error && error.name === "AbortError")) setShareStatus("Sharing failed. Please try again."); }
+  };
   const net = recap.wins - recap.losses;
-  const isYear = period === "2026 Year";
-  const liveRecap = Boolean(recapOverride);
+  const isYear = period.length === 4;
   const next = () => setSlide((value) => Math.min(4, value + 1));
   const previous = () => setSlide((value) => Math.max(0, value - 1));
   return (
@@ -1885,10 +1787,10 @@ function RecapStory({ period, recapOverride }: { period: string; recapOverride?:
               <Star className="orbit-icon two" />
               <Zap className="orbit-icon three" />
             </div>
-            <span>{isYear ? "YOUR YEAR ON UPBY" : "YOUR " + period.toUpperCase()}</span>
+            <span>{isYear ? "YOUR YEAR ON UPBY" : "YOUR " + label.toUpperCase()}</span>
             <h2>{net > 0 ? "+" : ""}{money(net)}</h2>
             <b>{isYear ? "UP BY THIS YEAR" : "UP BY THIS MONTH"}</b>
-            <p>{isYear ? "Twelve months. One number." : "Every log added up to this."}</p>
+            <p>{isYear ? "Your dated entries, added up for the year." : "Every log added up to this."}</p>
           </>}
           {slide === 1 && <>
             <div className="story-icon-stage win-icons">
@@ -1900,8 +1802,8 @@ function RecapStory({ period, recapOverride }: { period: string; recapOverride?:
             <span>THE WINS</span>
             <h2>{money(recap.wins)}</h2>
             <b>YOU KEPT SHOWING UP</b>
-            <div className="story-stat"><strong>{liveRecap ? recap.logs.split(" ")[0] : isYear ? "105" : period === "September" ? "18" : recap.logs.split(" ")[0]}</strong><small>WINS LOGGED</small></div>
-            <p>{recap.wins ? `Best day: +${money(recap.wins)}` : "No wins logged in this period."}</p>
+            <div className="story-stat"><strong>{recap.winCount}</strong><small>WINS LOGGED</small></div>
+            <p>{recap.bestDay !== null ? `Best daily net: ${insightSignedMoney(recap.bestDay)}` : "No entries logged in this period."}</p>
           </>}
           {slide === 2 && <>
             <div className="story-icon-stage loss-icons">
@@ -1924,9 +1826,9 @@ function RecapStory({ period, recapOverride }: { period: string; recapOverride?:
               <Star className="orbit-icon three" />
             </div>
             <span>CONSISTENCY</span>
-            <h2>{liveRecap ? recap.streak.split(" ")[0] : isYear ? "21" : period === "September" ? "12" : recap.streak.split(" ")[0]}</h2>
-            <b>{isYear ? "DAY LONGEST STREAK" : "DAY STREAK"}</b>
-            <div className="story-rank"><Trophy /><span>BEST POSITION</span><strong>{recap.rank.split(" ")[0]}</strong></div>
+            <h2>{recap.longestStreak}</h2>
+            <b>DAY LONGEST STREAK</b>
+            <div className="story-rank"><Trophy /><span>DAYS LOGGED</span><strong>{recap.activeDays}</strong></div>
           </>}
           {slide === 4 && <>
             <div className="story-icon-stage final-icons">
@@ -1935,19 +1837,19 @@ function RecapStory({ period, recapOverride }: { period: string; recapOverride?:
               <Share2 className="orbit-icon two" />
               <Sparkles className="orbit-icon three" />
             </div>
-            <span>{isYear ? "MY 2026" : "MY " + period.toUpperCase()}</span>
+            <span>{"MY " + label.toUpperCase()}</span>
             <div className="final-split"><b>{money(recap.wins)}<small>WINS</small></b><b>{money(recap.losses)}<small>LOSSES</small></b></div>
             <h2>{net > 0 ? "+" : ""}{money(net)}</h2>
             <b>UP BY</b>
-            <footer>{recap.logs}<br />{recap.streak} · {recap.rank}</footer>
+            <footer>{recap.winCount} WINS · {recap.lossCount} LOSSES<br />{recap.longestStreak} DAY LONGEST STREAK</footer>
           </>}
         </motion.section>
       </AnimatePresence>
       <div className="story-controls">
         <button onClick={previous} disabled={slide === 0}><ChevronLeft /> BACK</button>
-        {slide < 4 ? <button onClick={next}>NEXT <ChevronRight /></button> : <button className="story-share"><Share2 /> SHARE RECAP</button>}
+        {slide < 4 ? <button onClick={next}>NEXT <ChevronRight /></button> : <button className="story-share" onClick={() => void shareRecap()}><Share2 /> SHARE RECAP</button>}
       </div>
-      <small className="swipe-hint">SWIPE OR USE THE BUTTONS</small>
+      <small className="swipe-hint" role="status">{shareStatus || "SWIPE OR USE THE BUTTONS"}</small>
     </div>
   );
 }

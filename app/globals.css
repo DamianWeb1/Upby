@@ -4362,3 +4362,10 @@ button:disabled { cursor: wait; }
 .weekly-status { font-size:13px; margin:10px 0 0; }
 .weekly-status:empty { display:none; }
 @media(max-width:480px) { .weekly-summary { padding:20px 16px; border-radius:20px; } .weekly-summary header { align-items:flex-start; } .weekly-navigation { gap:3px; } .weekly-navigation button { width:36px; height:36px; } .weekly-actions button { flex:1; padding:10px; } }
+
+.insight-month-picker, .recap-year-picker { display:flex; align-items:center; gap:12px; margin:14px 0; font-weight:750; flex-wrap:wrap; }
+.insight-month-picker input, .recap-year-picker select { min-width:0; max-width:100%; padding:10px 12px; border:1px solid #c8c5bc; border-radius:10px; color:var(--ink); background:#fffdf6; font:inherit; font-size:16px; }
+.insight-date-note { font-size:13px; color:var(--muted); }
+.heat-grid > .calendar-blank { visibility:hidden; }
+.insight-hero button:disabled { opacity:.4; cursor:default; }
+.period-menu { max-height:70dvh; overflow-y:auto; }
