@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m as motion } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -333,7 +333,7 @@ function Onboarding({ onComplete, onBack, initialProfile = DEFAULT_PROFILE }: { 
           </div>
           <span>{step + 1} / 4</span>
         </header>
-        <AnimatePresence mode="wait">
+      <AnimatePresence mode="wait">
           <motion.div className="onboarding-step" key={step} initial={{ opacity: 0, x: 24 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }}>
             {step === 0 && <>
               <span>YOUR IDENTITY</span>
@@ -387,6 +387,19 @@ function Onboarding({ onComplete, onBack, initialProfile = DEFAULT_PROFILE }: { 
     </main>
   );
 }
+async function authenticatedWrite(action: () => PromiseLike<{ error: any }>) {
+  let result = await action();
+  if (result.error && (result.error.code === "PGRST303" || /jwt|token.*expired/i.test(result.error.message || ""))) {
+    const { error } = await supabase.auth.refreshSession();
+    if (error) throw error;
+    result = await action();
+  }
+  if (result.error) throw result.error;
+}
+function localToday() {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
 export default function App() {
   const [stage, setStage] = useState<"auth" | "onboarding" | "app">("auth"),
     [tab, setTab] = useState<Tab>("home"),
@@ -410,6 +423,21 @@ export default function App() {
     [share, setShare] = useState<Log | null>(null),
     [success, setSuccess] = useState<Log | null>(null),
     [toast, setToast] = useState("");
+  const writing = useRef(false);
+  const revision = useRef(0);
+  const draftId = useRef<number | null>(null);
+  const [saveStatus, setSaveStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [undoLog, setUndoLog] = useState<{ log: Log; owner: string | null } | null>(null);
+  const [repeatLog, setRepeatLog] = useState<Log | null>(null);
+  useEffect(() => {
+    setUndoLog(null); setRepeatLog(null); setSaveStatus(""); draftId.current = null;
+  }, [authUser?.id]);
+  useEffect(() => {
+    if (!undoLog || busy) return;
+    const timer = window.setTimeout(() => setUndoLog(null), 10000);
+    return () => window.clearTimeout(timer);
+  }, [undoLog, busy]);
   useEffect(() => {
     let active = true;
     const applyUser = (user: any) => {
@@ -597,9 +625,12 @@ export default function App() {
     if (!hydrated || !authUser || demoMode) return;
     let active = true;
     let refreshing = false;
+    let lastRealtimeError = 0;
+    let recoveringAuth = false;
     const refreshLogs = async () => {
-      if (refreshing) return;
+      if (refreshing || writing.current) return;
       refreshing = true;
+      const requestRevision = revision.current;
       try {
         const { data, error } = await supabase
           .from("logs")
@@ -607,7 +638,7 @@ export default function App() {
           .eq("user_id", authUser.id)
           .order("id", { ascending: false });
         if (error) throw error;
-        if (active) setLogs((data as LogRow[] | null)?.map(rowToLog) || []);
+        if (active && !writing.current && requestRevision === revision.current) setLogs((data as LogRow[] | null)?.map(rowToLog) || []);
       } catch (error) {
         void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "logs", "log_refresh_failed"));
       } finally {
@@ -619,6 +650,7 @@ export default function App() {
       if (document.visibilityState === "visible") void refreshLogs();
     };
     window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
     const channel = supabase
       .channel(`upby-logs-${authUser.id}`)
@@ -628,7 +660,19 @@ export default function App() {
         () => { void refreshLogs(); },
       )
       .subscribe((status, error) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        if (status === "SUBSCRIBED") { void refreshLogs(); return; }
+        if (/jwt|token.*expired/i.test(error?.message || "") && !recoveringAuth) {
+          recoveringAuth = true;
+          void supabase.auth.refreshSession().then(async ({ data, error: refreshError }) => {
+            if (!refreshError && data.session && active) {
+              await supabase.realtime.setAuth(data.session.access_token);
+              await refreshLogs();
+            }
+          }).catch(() => undefined).finally(() => { recoveringAuth = false; });
+        }
+
+        if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && document.visibilityState === "visible" && navigator.onLine && Date.now() - lastRealtimeError > 60000) {
+          lastRealtimeError = Date.now();
           void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "logs_realtime", "realtime_failed"));
         }
       });
@@ -636,6 +680,7 @@ export default function App() {
       active = false;
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("online", onFocus);
       void supabase.removeChannel(channel);
     };
   }, [hydrated, authUser?.id, demoMode]);
@@ -747,69 +792,45 @@ export default function App() {
     setSuccess(log);
     setTimeout(() => setSuccess(null), 1600);
   };
-  const add = async (x: Omit<Log, "id">) => {
-    const l = { ...x, id: Date.now() };
-    if (authUser) {
-      try {
-        const { error } = await supabase
-          .from("logs")
-          .upsert(logToRow(l, authUser.id), { onConflict: "user_id,id" });
-        if (error) throw error;
-        void trackProductEvent(authUser.id, "log_created", "logs", { type: x.type, category: x.category });
-      } catch (error) {
-        void trackProductEvent(authUser.id, "client_error", "logs", errorMetadata(error, "logs", "create_failed"));
-        setToast("Could not save this log. Please try again.");
-        setTimeout(() => setToast(""), 2600);
-        return;
-      }
-    }
-    setLogs((v) => [l, ...v.filter((item) => item.id !== l.id)]);
-    setSheet(null);
-    showSuccess(l);
-    if (x.type === "win") setTimeout(() => setShare(l), 1750);
+  const persistLog = async (log: Log, operation: "create" | "update" | "restore") => {
+    if (writing.current) return;
+    writing.current = true; revision.current += 1; setBusy(true); setSaveStatus("Saving entry…");
+    try {
+      if (authUser) await authenticatedWrite(() => supabase.from("logs").upsert(logToRow(log, authUser.id), { onConflict: "user_id,id" }));
+      setLogs(items => [log, ...items.filter(item => item.id !== log.id)].sort((a, b) => b.id - a.id));
+      if (operation !== "restore") {
+        setSheet(null); setEditing(null); setRepeatLog(null); draftId.current = null;
+        showSuccess(log);
+      } else setUndoLog(null);
+      setSaveStatus(authUser ? "Entry saved" : "Saved in demo");
+      if (authUser) void trackProductEvent(authUser.id, operation === "update" ? "log_updated" : "log_created", "logs", { type: log.type, category: log.category });
+    } catch (error) {
+      if (operation === "restore") setUndoLog({ log, owner: authUser?.id || null });
+      setSaveStatus(operation === "restore" ? "Restore failed. Tap Undo to retry." : "Entry not saved. Your draft is still open. Tap Retry.");
+      if (authUser) void trackProductEvent(authUser.id, "client_error", "logs", errorMetadata(error, "logs", `${operation}_failed`));
+    } finally { writing.current = false; revision.current += 1; setBusy(false); }
   };
-  const updateLog = async (id: number, data: Omit<Log, "id">) => {
-    const updated = { ...data, id };
-    if (authUser) {
-      try {
-        const { error } = await supabase
-          .from("logs")
-          .upsert(logToRow(updated, authUser.id), { onConflict: "user_id,id" });
-        if (error) throw error;
-        void trackProductEvent(authUser.id, "log_updated", "logs", { type: data.type, category: data.category });
-      } catch (error) {
-        void trackProductEvent(authUser.id, "client_error", "logs", errorMetadata(error, "logs", "update_failed"));
-        setToast("Could not update this log. Please try again.");
-        setTimeout(() => setToast(""), 2600);
-        return;
-      }
-    }
-    setLogs((items) => items.map((item) => item.id === id ? updated : item));
-    setEditing(null);
-    showSuccess(updated);
+  const add = (data: Omit<Log, "id">) => {
+    if (!draftId.current) draftId.current = Date.now();
+    return persistLog({ ...data, id: draftId.current }, "create");
   };
+  const updateLog = (id: number, data: Omit<Log, "id">) => persistLog({ ...data, id }, "update");
   const removeLog = async (id: number) => {
-    if (authUser) {
-      try {
-        const { data, error } = await supabase
-          .from("logs")
-          .delete()
-          .eq("user_id", authUser.id)
-          .eq("id", id)
-          .select("id");
-        if (error) throw error;
-        if (!data?.length) throw new Error("Log was not deleted");
-        void trackProductEvent(authUser.id, "log_deleted", "logs");
-      } catch (error) {
-        void trackProductEvent(authUser.id, "client_error", "logs", errorMetadata(error, "logs", "delete_failed"));
-        setToast("Could not delete this log. Please try again.");
-        setTimeout(() => setToast(""), 2600);
-        return;
-      }
-    }
-    setLogs((items) => items.filter((item) => item.id !== id));
-    setToast("Log removed");
-    setTimeout(() => setToast(""), 1800);
+    if (writing.current) return;
+    const removed = logs.find(item => item.id === id);
+    if (!removed) return;
+    writing.current = true; revision.current += 1; setBusy(true); setSaveStatus("Deleting entry…");
+    try {
+      if (authUser) await authenticatedWrite(() => supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id));
+      setLogs(items => items.filter(item => item.id !== id));
+      setEditing(null);
+      setUndoLog({ log: removed, owner: authUser?.id || null });
+      setSaveStatus("Entry deleted");
+      if (authUser) void trackProductEvent(authUser.id, "log_deleted", "logs");
+    } catch (error) {
+      setSaveStatus("Delete failed. Your entry is still here. Try again.");
+      if (authUser) void trackProductEvent(authUser.id, "client_error", "logs", errorMetadata(error, "logs", "delete_failed"));
+    } finally { writing.current = false; revision.current += 1; setBusy(false); }
   };
   const signOut = async () => {
     if (authUser) {
@@ -857,6 +878,8 @@ export default function App() {
           {profile.displayName.slice(0, 1).toUpperCase()}
         </button>
       </header>
+        {saveStatus && <div className="entry-status" role="status">{saveStatus}</div>}
+      {undoLog && <div className="entry-undo" role="status">Entry deleted <button disabled={busy} onClick={() => { if (undoLog.owner === (authUser?.id || null)) void persistLog(undoLog.log, "restore"); }}>Undo</button></div>}
       <AnimatePresence mode="wait">
         <motion.main
           key={tab}
@@ -876,6 +899,7 @@ export default function App() {
                 setShare,
                 setEditing,
                 removeLog,
+                repeatEntry: (log: Log) => { draftId.current = null; setRepeatLog({ ...log, date: "Today", dateKey: localToday(), screenshot: false }); setSheet(log.type); },
                 freshStart,
                 profile,
                 leaderboard,
@@ -905,10 +929,14 @@ export default function App() {
         {(sheet || editing) && (
           <LogSheet
             type={editing?.type || sheet}
-            initial={editing}
-            close={() => { setSheet(null); setEditing(null); }}
+            initial={editing || repeatLog}
+            isRepeat={Boolean(repeatLog && !editing)}
+            busy={busy}
+            saveError={saveStatus.startsWith("Entry not saved")}
+            defaultCategory={logs.find(log => log.type === sheet)?.category}
+            close={() => { if (!busy) { setSheet(null); setEditing(null); setRepeatLog(null); draftId.current = null; } }}
             save={(data: Omit<Log, "id">) => editing ? updateLog(editing.id, data) : add(data)}
-            remove={editing ? () => { removeLog(editing.id); setEditing(null); } : undefined}
+            remove={editing ? () => removeLog(editing.id) : undefined}
             customCategories={customCategories}
             onAddCustom={(item: [string, string]) => setCustomCategories((items) => items.some(([name]) => name.toLowerCase() === item[0].toLowerCase()) ? items : [...items, item])}
           />
@@ -948,6 +976,7 @@ function HomeView({
   setShare,
   setEditing,
   removeLog,
+  repeatEntry,
   freshStart,
   profile,
   leaderboard,
@@ -1171,6 +1200,7 @@ function HomeView({
                     <footer>
                       <button onClick={() => setShare(l)}><Share2 /> Share</button>
                       <button onClick={() => setEditing(l)}><Edit3 /> Edit</button>
+                      <button onClick={() => repeatEntry(l)}><Plus /> Repeat</button>
                       <button className="delete" onClick={() => removeLog(l.id)}><Trash2 /> Delete</button>
                     </footer>
                   </motion.div>
@@ -1207,8 +1237,8 @@ function Title({
     </div>
   );
 }
-function LogSheet({ type, initial, close, save, remove, customCategories = [], onAddCustom }: any) {
-  const today = new Date().toISOString().slice(0, 10);
+function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = false, defaultCategory, close, save, remove, customCategories = [], onAddCustom }: any) {
+  const today = localToday();
   let startingDate = initial?.dateKey || today;
   if (!initial?.dateKey && initial?.date === "Yesterday") {
     const yesterday = new Date();
@@ -1220,7 +1250,7 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
   const [kind, setKind] = useState<"win" | "loss">(type || "win"),
     [amount, setAmount] = useState(initial ? String(initial.amount) : ""),
     [title, setTitle] = useState(initial?.title || ""),
-    [category, setCategory] = useState(initial?.category || (type === "loss" ? LOSS_CATS[0][0] : CATS[0][0])),
+    [category, setCategory] = useState(initial?.category || defaultCategory || (type === "loss" ? LOSS_CATS[0][0] : CATS[0][0])),
     [note, setNote] = useState(initial?.note || ""),
     [date, setDate] = useState(startingDate),
     [custom, setCustom] = useState(false),
@@ -1279,8 +1309,8 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
         <i className="grab" />
         <header>
           <div>
-            <span>{initial ? "UPDATE YOUR ENTRY" : "ADD TO YOUR MONTH"}</span>
-            <h2>{initial ? "Edit progress" : "Log your progress"}</h2>
+            <span>{isRepeat ? "REPEAT AN ENTRY" : initial ? "UPDATE YOUR ENTRY" : "ADD TO YOUR MONTH"}</span>
+            <h2>{isRepeat ? "Repeat progress" : initial ? "Edit progress" : "Log your progress"}</h2>
           </div>
           <button onClick={close}>
             <X />
@@ -1311,7 +1341,7 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
                   aria-label="Amount"
                   placeholder="0"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1"))}
                 />
               </div>
             </label>
@@ -1374,14 +1404,15 @@ function LogSheet({ type, initial, close, save, remove, customCategories = [], o
             </div>
           </div>
         </div>
+        {saveError && <p role="alert">Entry not saved. Check your connection and tap Retry.</p>}
         <div className="sheet-actions">
-          {initial && <button className={confirmDelete ? "sheet-delete confirm" : "sheet-delete"} onClick={() => confirmDelete ? remove() : setConfirmDelete(true)}><Trash2 />{confirmDelete ? "DELETE THIS LOG?" : "DELETE"}</button>}
+          {remove && <button disabled={busy} className={confirmDelete ? "sheet-delete confirm" : "sheet-delete"} onClick={() => confirmDelete ? remove() : setConfirmDelete(true)}><Trash2 />{confirmDelete ? "DELETE THIS LOG?" : "DELETE"}</button>}
           <button
             className={`submit ${kind}`}
-            disabled={!Number(amount) || !title.trim() || !date}
+            disabled={busy || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || !title.trim() || !date}
             onClick={() => save({ type: kind, amount: Number(amount), title: title.trim(), category, date: formatDate(date), dateKey: date, note: note.trim(), screenshot: screenshotAttached })}
           >
-            {initial ? "SAVE CHANGES" : `LOG ${kind.toUpperCase()}`}
+            {busy ? "SAVING…" : saveError ? "RETRY" : initial && !isRepeat ? "SAVE CHANGES" : `LOG ${kind.toUpperCase()}`}
             <ArrowUpRight />
           </button>
         </div>
@@ -2217,6 +2248,9 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
   );
 }
 function Leaderboard({ close, following, setFollowing, freshStart, profile, net, logs, leaderboard, authUserId }: any) {
+  const followLocks = useRef(new Set<string>());
+  const [followBusy, setFollowBusy] = useState(false);
+  const [followError, setFollowError] = useState("");
   const [view, setView] = useState("GLOBAL"),
     [period, setPeriod] = useState("THIS MONTH"),
     [selectedUser, setSelectedUser] = useState<any>(null),
@@ -2253,18 +2287,20 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
     }
     const targetId = String(user[5]);
     if (!targetId || targetId === authUserId) return;
+    if (followLocks.current.has(targetId)) return;
+    followLocks.current.add(targetId); setFollowBusy(true); setFollowError("");
     const alreadyFollowing = following.includes(targetId);
-    setFollowing((items: string[]) => alreadyFollowing ? items.filter((id: string) => id !== targetId) : [...items, targetId]);
-    const request = alreadyFollowing
-      ? supabase.from("follows").delete().eq("follower_id", authUserId).eq("followed_id", targetId)
-      : supabase.from("follows").insert({ follower_id: authUserId, followed_id: targetId });
-    const { error } = await request;
-    if (error) {
-      setFollowing((items: string[]) => alreadyFollowing ? [...items, targetId] : items.filter((id: string) => id !== targetId));
-      void trackProductEvent(authUserId, "client_error", "social", { code: alreadyFollowing ? "unfollow_failed" : "follow_failed" });
-      return;
-    }
-    void trackProductEvent(authUserId, alreadyFollowing ? "user_unfollowed" : "user_followed", "social");
+    try {
+      await authenticatedWrite(() => alreadyFollowing
+        ? supabase.from("follows").delete().eq("follower_id", authUserId).eq("followed_id", targetId)
+        : supabase.from("follows").upsert({ follower_id: authUserId, followed_id: targetId }, { onConflict: "follower_id,followed_id", ignoreDuplicates: true }));
+      setFollowing((items: string[]) => alreadyFollowing ? items.filter(id => id !== targetId) : [...new Set([...items, targetId])]);
+      void trackProductEvent(authUserId, alreadyFollowing ? "user_unfollowed" : "user_followed", "social");
+    } catch (error) {
+      setFollowError("Could not save. Please try again.");
+      void trackProductEvent(authUserId, "client_error", "social", errorMetadata(error, "follows", "follow_failed"));
+    } finally { followLocks.current.delete(targetId); setFollowBusy(false); }
+
   };
   return (
     <motion.div
@@ -2282,6 +2318,7 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
           <Search />
         </button>
       </header>
+      {followError && <p role="alert">{followError}</p>}
       <motion.main
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
@@ -2373,8 +2410,9 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
               <a className="leader-public-link" href={`/${selectedUser[2]}`}>VIEW PUBLIC PROFILE <ArrowUpRight /></a>
               <button
                 className={following.includes(String(freshStart ? selectedUser[5] : selectedUser[1])) ? "follow following" : "follow"}
+                disabled={followBusy}
                 onClick={() => toggleFollow(selectedUser)}
-              >                <UserPlus /> {following.includes(String(freshStart ? selectedUser[5] : selectedUser[1])) ? "FOLLOWING" : "FOLLOW"}
+              >                <UserPlus /> {followBusy ? "SAVING…" : following.includes(String(freshStart ? selectedUser[5] : selectedUser[1])) ? "FOLLOWING" : "FOLLOW"}
               </button>
             </motion.section>
           </motion.div>
