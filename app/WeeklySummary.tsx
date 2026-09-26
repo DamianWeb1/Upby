@@ -56,28 +56,43 @@ export default function WeeklySummary({ logs, username, avatarUrl }: { logs: Wee
     }
     context.restore();
     text(username ? `@${username.replace(/^@/, "")}` : "UPBY member", 1012, 101, 30, "#fffdf6", 508);
-    text(offset === 0 ? "MY WEEK SO FAR" : "MY WEEK IN REVIEW", 80, 200, 30);
-    text(period, 80, 250, 25, "#c6c7d4", 720);
-    text(money(summary.net), 80, 430, 104, "#d4f15d", 720);
-    text("NET PROGRESS", 80, 485, 25);
-    text("WINS", 80, 600, 23, "#c6c7d4");
-    text("EXPENSES / LOSSES", 450, 600, 23, "#c6c7d4");
-    text(money(summary.wins), 80, 663, 43, "#fffdf6", 325);
-    text(money(summary.losses), 450, 663, 43, "#ff8980", 350);
     context.fillStyle = "#35364e";
-    context.fillRect(850, 185, 2, 510);
-    text("TOP CATEGORIES", 915, 220, 27, "#c6c7d4", 605);
-    text("BY TOTAL AMOUNT", 915, 263, 20, "#c6c7d4", 605);
-    summary.categories.forEach((category, index) => {
-      const y = 355 + index * 125;
-      text(category.name, 915, y, 27, "#fffdf6", 605);
-      context.textAlign = "right";
-      text(money(category.volume), 1520, y + 45, 30, "#d4f15d", 605);
-      context.textAlign = "left";
-    });
-    text(`${summary.count} ${summary.count === 1 ? "entry" : "entries"} logged`, 80, 820, 25, "#c6c7d4", 720);
+    context.fillRect(80, 150, 1440, 1);
+    text(offset === 0 ? "MY WEEK SO FAR" : "MY WEEK IN REVIEW", 80, 220, 32);
     context.textAlign = "right";
-    text("getupby.vercel.app", 1520, 820, 26, "#d4f15d", 605);
+    text(period, 1520, 220, 25, "#c6c7d4", 700);
+    context.textAlign = "left";
+    const panel = (x: number, y: number, width: number, height: number) => {
+      context.fillStyle = "#22233d";
+      context.beginPath(); context.roundRect(x, y, width, height, 24); context.fill();
+    };
+    panel(80, 268, 704, 468);
+    panel(816, 268, 704, 468);
+    text("NET PROGRESS", 116, 328, 23, "#c6c7d4");
+    text(money(summary.net), 116, 458, 100, "#d4f15d", 632);
+    context.fillStyle = "#3a3b52";
+    context.fillRect(116, 515, 632, 1);
+    text("WINS", 116, 579, 21, "#c6c7d4");
+    text("EXPENSES / LOSSES", 445, 579, 21, "#c6c7d4", 303);
+    text(money(summary.wins), 116, 647, 42, "#fffdf6", 293);
+    text(money(summary.losses), 445, 647, 42, "#ff8980", 303);
+    text("TOP CATEGORIES", 852, 328, 23, "#c6c7d4", 330);
+    context.textAlign = "right";
+    text("TOTAL AMOUNT", 1484, 328, 18, "#c6c7d4", 230);
+    context.textAlign = "left";
+    summary.categories.forEach((category, index) => {
+      const y = 425 + index * 110;
+      text(category.name, 852, y, 28, "#fffdf6", 355);
+      context.textAlign = "right";
+      text(money(category.volume), 1484, y, 30, "#d4f15d", 250);
+      context.textAlign = "left";
+      if (index < summary.categories.length - 1) {
+        context.fillStyle = "#3a3b52"; context.fillRect(852, y + 40, 632, 1);
+      }
+    });
+    text(`${summary.count} ${summary.count === 1 ? "entry" : "entries"} logged`, 80, 820, 24, "#c6c7d4", 704);
+    context.textAlign = "right";
+    text("getupby.vercel.app", 1520, 820, 24, "#d4f15d", 704);
     context.textAlign = "left";
     return await new Promise<Blob>((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Image unavailable")), "image/png"));
   };
