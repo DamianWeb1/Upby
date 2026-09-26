@@ -909,7 +909,7 @@ export default function App() {
               }}
             />
           ) : tab === "insights" ? (
-            <Insights {...{ net, wins, losses, logs, freshStart }} />
+            <Insights {...{ net, wins, losses, logs, freshStart, profile }} />
           ) : (
             <Profile {...{ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut, followingCount: following.length, followerCount, startLog: () => setQuick(true) }} />
           )}
@@ -1504,7 +1504,7 @@ function earnedFrom(logs: Log[], net: number) {
     badge === "$10K MONTH" ? net >= 10000 : false
   );
 }
-function Insights({ net, wins, losses, logs, freshStart }: any) {
+function Insights({ net, wins, losses, logs, freshStart, profile }: any) {
   const [month, setMonth] = useState(() => currentMonth());
   const [pop, setPop] = useState<string | null>(null);
   const [recapPeriod, setRecapPeriod] = useState(() => currentMonth());
@@ -1526,7 +1526,7 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
   const undatedCount = (logs as Log[]).filter(log => !validDateKey(log.dateKey)).length;
   return (
     <div className="page insights">
-      <WeeklySummary logs={logs} />
+      <WeeklySummary logs={logs} username={profile.username} avatarUrl={profile.avatarUrl} />
       <label className="insight-month-picker">Choose month<input type="month" value={month} max={currentMonth()} onChange={e => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(e.target.value) && e.target.value <= currentMonth()) setMonth(e.target.value); }} /></label>
       {undatedCount > 0 && <p className="insight-date-note">{undatedCount} undated {undatedCount === 1 ? "entry is" : "entries are"} excluded. Edit the entry date to include it in Insights.</p>}
       <section className="insight-hero">
