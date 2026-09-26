@@ -36,7 +36,7 @@ type PublicProfile = {
   logs: PublicLog[];
 };
 
-const money = (value: number) => `$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+const money = (value: number) => Math.abs(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 const signedMoney = (value: number) => `${value > 0 ? "+" : value < 0 ? "-" : ""}${money(value)}`;
 
 export default function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {

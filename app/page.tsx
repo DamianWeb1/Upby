@@ -4,6 +4,7 @@ import { AnimatePresence, m as motion } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 import MonthlyGoal from "./MonthlyGoal";
 import WeeklySummary from "./WeeklySummary";
+import { activityStats } from "./activity-stats";
 import { currentMonth, shiftMonth, periodLabel, periodSummary, validDateKey, insightMoney, insightSignedMoney, type PeriodSummary } from "./insight-periods";
 import { emptyFilters, filterLogs, logTotals, type LogFilters } from "./log-filters";
 import {
@@ -166,7 +167,7 @@ const money = (n: number) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(n);
 const signedMoney = (n: number) => `${n > 0 ? "+" : n < 0 ? "-" : ""}${money(Math.abs(n))}`;
 const logToRow = (log: Log, userId: string): LogRow => ({
@@ -405,6 +406,13 @@ function localToday() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 export default function App() {
+  const [calendarDay, setCalendarDay] = useState(localToday);
+  useEffect(() => {
+    const refresh = () => setCalendarDay(localToday());
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, []);
   const [stage, setStage] = useState<"auth" | "onboarding" | "app">("auth"),
     [tab, setTab] = useState<Tab>("home"),
     [logs, setLogs] = useState(START),
@@ -776,18 +784,8 @@ export default function App() {
       window.removeEventListener("unhandledrejection", onRejection);
     };
   }, [hydrated, authUser?.id, demoMode]);
-  const trackedLogs = logs.filter((log) => !log.dateKey || new Date(`${log.dateKey}T00:00:00`).getMonth() === new Date().getMonth());
-  const wins =
-      (freshStart ? 0 : 3390) +
-      trackedLogs
-        .filter((x) => x.type === "win")
-        .reduce((a, b) => a + b.amount, 0),
-    losses =
-      (freshStart ? 0 : 520) +
-      trackedLogs
-        .filter((x) => x.type === "loss")
-        .reduce((a, b) => a + b.amount, 0),
-    net = wins - losses;
+  const monthlyStats = useMemo(() => periodSummary(logs, calendarDay.slice(0,7)), [logs, calendarDay]);
+  const { wins, losses, net } = monthlyStats;
   const nav = (x: Tab) => {
     setTab(x);
     scrollTo({ top: 0, behavior: "auto" });
@@ -1005,10 +1003,11 @@ function HomeView({
   const resetFilters = () => { setFilters(emptyFilters); setVisibleCount(20); };
   const formatTotal = (value: number) => value.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
   const [streakDay, setStreakDay] = useState<number | null>(null);
-  const firstEntry = freshStart ? logs[0] as Log | undefined : undefined;
+  const firstEntry = freshStart && logs.length === 1 ? logs[0] as Log | undefined : undefined;
   const isEmpty = freshStart && logs.length === 0;
-  const streak = freshStart ? (logs.length ? 1 : 0) : 12;
-  const todayIndex = (new Date().getDay() + 6) % 7;
+  const activity = activityStats(logs, localToday());
+  const streak = activity.current;
+
   const liveLeaderboard: LeaderboardEntry[] = freshStart && leaderboard.length ? leaderboard : [{ rank: 1, user_id: authUserId, display_name: profile.displayName, username: profile.username, avatar_url: profile.avatarUrl, net, streak }];
   const ownLeaderboardEntry = liveLeaderboard.find((entry) => entry.user_id === authUserId) || liveLeaderboard[0];
   if (isEmpty) {
@@ -1067,7 +1066,7 @@ function HomeView({
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
           >
-            +{money(net)}
+            {signedMoney(net)}
           </motion.strong>
           <em>THIS MONTH</em>
           <motion.small
@@ -1075,7 +1074,7 @@ function HomeView({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            {freshStart ? <><CalendarDays /> Today’s net · {net >= 0 ? "+" : "-"}{money(Math.abs(net))}</> : <><TrendingUp /> $1,100 ahead of August</>}
+            <><CalendarDays /> Today’s net · {signedMoney(activity.todayNet)}</>
           </motion.small>
         </div>
         <div className="split">
@@ -1103,7 +1102,7 @@ function HomeView({
       {freshStart && firstEntry && (
         <motion.section className={`first-unlocked ${firstEntry.type}`} initial={{ opacity: 0, y: 18, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }}>
           <i>{firstEntry.type === "win" ? <Trophy /> : <ShieldCheck />}</i>
-          <div><span>FIRST ENTRY LOGGED</span><h2>{firstEntry.type === "win" ? "First win collected." : "First loss recorded."}</h2><p>Your Home is live. Today’s net is {net >= 0 ? "+" : "-"}{money(Math.abs(net))}.</p></div>
+          <div><span>FIRST ENTRY LOGGED</span><h2>{firstEntry.type === "win" ? "First win collected." : "First loss recorded."}</h2><p>Your Home is live. Today’s net is {signedMoney(activity.todayNet)}.</p></div>
           <div className="first-unlocked-stat"><b>{streak}</b><span>DAY STREAK</span></div>
         </motion.section>
       )}
@@ -1128,7 +1127,7 @@ function HomeView({
                 onClick={() => setStreakDay(streakDay === i ? null : i)}
                 key={i}
               >
-                <i className={(freshStart ? i === todayIndex : i < 6) ? "done" : ""}>{(freshStart ? i === todayIndex : i < 6) && <Check />}</i>
+                <i className={activity.weekActive[i] ? "done" : ""}>{activity.weekActive[i] && <Check />}</i>
                 {x}
               </button>
             ))}
@@ -1140,11 +1139,8 @@ function HomeView({
               animate={{ opacity: 1, y: 0 }}
             >
               {streakDay === null
-                ? freshStart ? "Your streak counts days you log, not consecutive wins." : "Log today to reach 13 days."
-                : freshStart ? (streakDay === todayIndex ? "Today · progress logged" : "No log on this day yet.")
-                : streakDay < 6
-                  ? (streakDay === 0 ? "Monday" : streakDay === 1 ? "Tuesday" : streakDay === 2 ? "Wednesday" : streakDay === 3 ? "Thursday" : streakDay === 4 ? "Friday" : "Saturday") + " · progress logged"
-                  : "No log yet. Add one to keep your streak."}
+                ? "Your streak counts consecutive days with a win or loss."
+                : `${activity.week[streakDay]} · ${activity.weekActive[streakDay] ? "progress logged" : "No log on this day."}`}
             </motion.p>
           </AnimatePresence>
         </section>
@@ -1494,7 +1490,7 @@ const badges = [
 function earnedFrom(logs: Log[], net: number) {
   const winCount = logs.filter((log) => log.type === "win").length;
   const lossCount = logs.filter((log) => log.type === "loss").length;
-  const streak = logs.length ? 1 : 0;
+  const streak = activityStats(logs, localToday()).longest;
   return badges.filter((badge) =>
     badge === "FIRST WIN" ? winCount >= 1 :
     badge === "FIRST LOSS" ? lossCount >= 1 :
@@ -1522,7 +1518,7 @@ function Insights({ net, wins, losses, logs, freshStart }: any) {
   const money = insightMoney, signedMoney = insightSignedMoney;
   const categoryItems = summary.categories.slice(0, 5).map((item, index) => [item.name, signedMoney(item.net), ["big", "mid", "coral", "small", ""][index]]);
   const bestCategory = categoryItems.length ? String(categoryItems[0][0]) : "No logs yet";
-  const earned = freshStart ? earnedFrom(logs, net) : badges.slice(0, 7);
+  const earned = earnedFrom(logs, net);
   const years = Array.from(new Set([currentMonth().slice(0,4), recapYear, ...(logs as Log[]).filter(log => validDateKey(log.dateKey)).map(log => log.dateKey!.slice(0,4))])).sort().reverse();
   const recapOptions = Array.from({length:12}, (_, index) => `${recapYear}-${String(index+1).padStart(2,"0")}`);
   const recapFor = (period: string) => periodSummary(logs as Log[], period);
@@ -1871,8 +1867,9 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     [deleteBusy, setDeleteBusy] = useState(false),
     [deleteError, setDeleteError] = useState(""),
     [privacyStatus, setPrivacyStatus] = useState("");
-  const streak = freshStart ? (logs.length ? 1 : 0) : 12;
-  const earned = freshStart ? earnedFrom(logs, net) : ["FIRST WIN", "30 DAY STREAK", "$5K MONTH", "TOP 100"];
+  const activity = activityStats(logs, localToday());
+  const streak = activity.current;
+  const earned = earnedFrom(logs, net);
   const selectedAchievements = freshStart ? earned.slice(0, 4) : earned;
   const openProfileEditor = () => { setDraftProfile(profile); setAvatarFile(null); setEditError(""); setEditingProfile(true); };
   const updatePrivacy = async (index: number) => {
@@ -2191,17 +2188,10 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
       <section className="history">
         <Title over="THE LONG VIEW" title="Monthly history" />
         <div>
-          {(freshStart ? [
-            ["SEP", signedMoney(net)],
-            ["AUG", "$0"],
-            ["JUL", "$0"],
-            ["JUN", "$0"],
-          ] : [
-            ["SEP", "+$4,280"],
-            ["AUG", "+$3,180"],
-            ["JUL", "-$420"],
-            ["JUN", "+$1,940"],
-          ]).map((x) => (
+          {Array.from({length:4}, (_, index) => {
+            const month = shiftMonth(currentMonth(), -index);
+            return [periodLabel(month), signedMoney(periodSummary(logs as Log[], month).net)];
+          }).map((x) => (
             <div key={x[0]}>
               <span>{x[0]}</span>
               <b className={x[1].startsWith("-") ? "loss" : ""}>{x[1]}</b>
@@ -2229,7 +2219,7 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
   }, [freshStart, period, view, following]);
   const users = useMemo(
     () => freshStart ? (liveEntries.length ? liveEntries.map((entry) => [Number(entry.rank), entry.display_name, entry.username, signedMoney(Number(entry.net)), Number(entry.streak), entry.user_id, entry.avatar_url]) : view === "GLOBAL" ? [
-      [1, profile.displayName, profile.username, signedMoney(net), logs.length ? 1 : 0, authUserId, profile.avatarUrl],
+      [1, profile.displayName, profile.username, signedMoney(net), activityStats(logs, localToday()).current, authUserId, profile.avatarUrl],
     ] : [
     ]) : [
       [1, "Zee", "zee", "+24,800", 28],
@@ -2422,7 +2412,7 @@ function Share({ log, net, displayName, close }: any) {
           </div>
           <footer>
             <span>{log.type === "win" ? "UP BY" : "STILL UP BY"}</span>
-            <b>+{money(net)} THIS MONTH</b>
+            <b>{signedMoney(net)} THIS MONTH</b>
           </footer>
         </div>
         <button className="share-x" onClick={shareToX}>
