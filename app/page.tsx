@@ -9,6 +9,7 @@ import RecapValue from "./RecapValue";
 import { activityStats } from "./activity-stats";
 import { currentMonth, shiftMonth, periodLabel, periodSummary, validDateKey, insightMoney, insightSignedMoney, type PeriodSummary } from "./insight-periods";
 import { emptyFilters, filterLogs, logTotals, type LogFilters } from "./log-filters";
+import { logDateLabel } from "./log-date";
 import {
   ArrowUpRight,
   BarChart3,
@@ -909,6 +910,7 @@ export default function App() {
                 profile,
                 leaderboard,
                 authUserId: authUser?.id,
+                calendarDay,
               }}
             />
           ) : tab === "insights" ? (
@@ -988,6 +990,7 @@ function HomeView({
   profile,
   leaderboard,
   authUserId,
+  calendarDay,
 }: any) {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [filters, setFilters] = useState<LogFilters>(emptyFilters);
@@ -1226,7 +1229,7 @@ function HomeView({
                   <b>{l.category}</b>
                   <small>{l.title}</small>
                 </span>
-                <time>{l.date}</time>
+                <time dateTime={l.dateKey}>{logDateLabel(l.dateKey, l.date, calendarDay)}</time>
                 <motion.i animate={{ rotate: expanded === l.id ? 90 : 0 }}>
                   <ChevronRight />
                 </motion.i>
@@ -2202,7 +2205,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
               {l.type === "win" ? "+" : "-"}
               {money(l.amount)}
             </strong>
-            <time>{l.date}</time>
+            <time dateTime={l.dateKey}>{logDateLabel(l.dateKey, l.date, localToday())}</time>
           </div>
         )) : <div className="public-log-empty"><CircleDollarSign /><b>No public logs yet</b><span>Your public entries will appear here.</span></div>}
       </section>
