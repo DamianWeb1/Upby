@@ -4369,3 +4369,39 @@ button:disabled { cursor: wait; }
 .heat-grid > .calendar-blank { visibility:hidden; }
 .insight-hero button:disabled { opacity:.4; cursor:default; }
 .period-menu { max-height:70dvh; overflow-y:auto; }
+
+/* Monthly recap experience */
+.monthly-recap-backdrop { z-index:190; padding:20px; }
+.monthly-recap-notice { width:min(440px,100%); max-height:90dvh; overflow:auto; padding:32px; border:2px solid var(--ink); border-radius:28px; background:#fffdf6; box-shadow:7px 8px 0 #111225; text-align:center; }
+.monthly-recap-emblem { width:76px; height:76px; margin:0 auto 22px; display:grid; place-items:center; background:#d4f15d; border:2px solid var(--ink); border-radius:24px; color:var(--ink); transform:rotate(-8deg); }
+.monthly-recap-notice>span { display:block; font-size:10px; letter-spacing:1.2px; font-weight:850; color:#315bdf; }
+.monthly-recap-notice h2 { font-size:30px; line-height:1.1; margin:12px 0; }
+.monthly-recap-notice p { color:#606070; line-height:1.5; }
+.monthly-recap-notice button { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; min-height:48px; padding:12px; border:0; border-radius:12px; background:#315bff; color:white; font:inherit; font-weight:800; margin-top:12px; }
+.monthly-recap-notice .monthly-recap-later { background:transparent; color:var(--ink); }
+.monthly-recap-notice small { color:#606070; font-size:12px; }
+.recap-story .story-progress { grid-template-columns:repeat(6,minmax(0,1fr)); padding-right:36px; }
+.story-progress button { border:0; border-radius:8px; height:16px; padding:0; background:linear-gradient(#ffffff35,#ffffff35) center/100% 4px no-repeat; }
+.story-progress button.active { background:linear-gradient(#fff,#fff) center/100% 4px no-repeat; }
+.story-0 { background:radial-gradient(ellipse at 100% 0,#6296ff55,transparent 65%),#245be8; }
+.story-1 { background:radial-gradient(ellipse at 0 100%,#c267ff88,transparent 70%),#6235dd; }
+.story-2 { background:linear-gradient(140deg,#ffb18b,#ef746c); }
+.story-3 { background:radial-gradient(ellipse at 100% 100%,#ffe29c,transparent 80%),#f3a63c; }
+.story-4 { background:radial-gradient(ellipse at 100% 0,#565c9666,transparent 70%),#1c1e38; color:#fffdf6; }
+.story-5 { background:linear-gradient(150deg,#e3fb8b,#c9eb52); color:var(--ink); }
+.story-5 footer { margin-top:auto; border-top:2px solid currentColor; width:100%; padding-top:18px; font-size:13px; line-height:1.6; font-weight:850; }
+.story-icon-stage:before { animation:recap-orbit 12s linear infinite; }
+.story-icon-stage:after { animation:recap-orbit 17s linear infinite reverse; }
+.story-slide>h2 { font-variant-numeric:tabular-nums; }
+.story-balance i { transform-origin:left; }
+.story-category-title { font-size:30px; line-height:1.1; margin:12px 0 20px; }
+.story-category-list { width:100%; display:grid; gap:20px; margin:0 0 22px; }
+.story-category-list header { display:flex; justify-content:space-between; align-items:baseline; gap:12px; font-size:15px; }
+.story-category-list header b { overflow-wrap:anywhere; min-width:0; }
+.story-category-list header strong { white-space:nowrap; font-size:17px; color:#d4f15d; }
+.story-category-list>div>div { height:7px; margin-top:10px; border-radius:8px; background:#ffffff20; overflow:hidden; }
+.story-category-list i { display:block; height:100%; background:#d4f15d; border-radius:8px; transform-origin:left; }
+@keyframes recap-orbit { to { transform:rotate(360deg); } }
+.recap-pop { max-height:94dvh; overflow-y:auto; }
+@media(max-width:760px) { .recap-pop { max-height:100dvh; padding-top:max(10px,env(safe-area-inset-top)); padding-bottom:max(10px,env(safe-area-inset-bottom)); } .recap-pop .story-slide { min-height:calc(100dvh - 130px); } .story-category-title { font-size:26px; } }
+@media(prefers-reduced-motion:reduce) { .recap-story *, .recap-story *:before, .recap-story *:after { animation:none!important; transition:none!important; } }
