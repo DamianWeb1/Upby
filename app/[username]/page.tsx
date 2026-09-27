@@ -2,7 +2,9 @@
 
 import { use, useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import { ArrowLeft, ArrowUpRight, Flame, Medal, Share2, Trophy, UserPlus } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Camera, Flame, LoaderCircle, Medal, Share2, Trophy, UserPlus } from "lucide-react";
+import { logDateLabel } from "../log-date";
+import { SCREENSHOT_BUCKET } from "../screenshot-storage";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
@@ -16,6 +18,8 @@ type PublicLog = {
   category: string;
   title: string;
   date_label: string;
+  date_key: string | null;
+  screenshot_path: string | null;
 };
 
 type PublicProfile = {
@@ -38,6 +42,27 @@ type PublicProfile = {
 
 const money = (value: number) => Math.abs(value).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 const signedMoney = (value: number) => `${value > 0 ? "+" : value < 0 ? "-" : ""}${money(value)}`;
+const localToday = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
+
+function PublicScreenshot({ path, title }: { path: string; title: string }) {
+  const [url, setUrl] = useState("");
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    supabase.storage.from(SCREENSHOT_BUCKET).createSignedUrl(path, 600).then(({ data, error }) => {
+      if (!active) return;
+      if (error || !data?.signedUrl) setFailed(true);
+      else setUrl(data.signedUrl);
+    });
+    return () => { active = false; };
+  }, [path]);
+  if (failed) return null;
+  if (!url) return <span className="public-screenshot-loading"><LoaderCircle /> Loading screenshot</span>;
+  return <img className="public-log-screenshot" src={url} alt={`${title} screenshot`} loading="lazy" />;
+}
 
 export default function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username } = use(params);
@@ -130,7 +155,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
       </section>
       <section className="public-feed">
         <span>RECENT PUBLIC LOGS</span>
-        {profile.logs.length ? profile.logs.map((log) => <article key={log.id}><i className={log.type}>{log.type.toUpperCase()}</i><div><b>{log.category}</b><p>{log.title}</p></div><strong>{log.amount === null ? "PRIVATE" : `${log.type === "win" ? "+" : "-"}${money(Number(log.amount))}`}</strong><time>{log.date_label}</time></article>) : <div className="public-feed-empty"><b>No public logs</b><p>This member has not shared any logs yet.</p></div>}
+        {profile.logs.length ? profile.logs.map((log) => <article key={log.id}><i className={log.type}>{log.type.toUpperCase()}</i><div><b>{log.category}</b><p>{log.title}</p></div><strong>{log.amount === null ? "PRIVATE" : `${log.type === "win" ? "+" : "-"}${money(Number(log.amount))}`}</strong><time dateTime={log.date_key || undefined}>{logDateLabel(log.date_key || undefined, log.date_label, localToday())}</time>{log.screenshot_path && <PublicScreenshot path={log.screenshot_path} title={log.title} />}</article>) : <div className="public-feed-empty"><Camera /><b>No public logs</b><p>This member has not shared any logs yet.</p></div>}
       </section>
       <footer className="public-footer"><a href="/">UPBY</a><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Feedback</a></nav></footer>
     </main>

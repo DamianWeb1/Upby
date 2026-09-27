@@ -10,6 +10,7 @@ import { activityStats } from "./activity-stats";
 import { currentMonth, shiftMonth, periodLabel, periodSummary, validDateKey, insightMoney, insightSignedMoney, type PeriodSummary } from "./insight-periods";
 import { emptyFilters, filterLogs, logTotals, type LogFilters } from "./log-filters";
 import { logDateLabel } from "./log-date";
+import { SCREENSHOT_BUCKET, screenshotFileError, screenshotObjectPath } from "./screenshot-storage";
 import {
   ArrowUpRight,
   BarChart3,
@@ -62,7 +63,9 @@ type Log = {
   dateKey?: string;
   note?: string;
   screenshot?: boolean;
+  screenshotPath?: string;
 };
+type LogDraft = Omit<Log, "id"> & { screenshotFile?: File | null; removeScreenshot?: boolean };
 type LogRow = {
   id: number | string;
   user_id: string;
@@ -74,6 +77,7 @@ type LogRow = {
   date_key: string | null;
   note: string | null;
   screenshot: boolean;
+  screenshot_path: string | null;
 };
 type ProfileData = { displayName: string; username: string; xProfile: string; avatarUrl: string | null; bio?: string };
 type LeaderboardEntry = {
@@ -184,6 +188,7 @@ const logToRow = (log: Log, userId: string): LogRow => ({
   date_key: log.dateKey || null,
   note: log.note || null,
   screenshot: Boolean(log.screenshot),
+  screenshot_path: log.screenshotPath || null,
 });
 const rowToLog = (row: LogRow): Log => ({
   id: Number(row.id),
@@ -194,7 +199,8 @@ const rowToLog = (row: LogRow): Log => ({
   date: row.date_label,
   dateKey: row.date_key || undefined,
   note: row.note || undefined,
-  screenshot: row.screenshot,
+  screenshot: Boolean(row.screenshot_path || row.screenshot),
+  screenshotPath: row.screenshot_path || undefined,
 });
 const trackProductEvent = async (
   userId: string | undefined,
@@ -557,7 +563,7 @@ export default function App() {
           supabase.from("profiles").select("display_name,username,avatar_url,bio,x_profile,show_totals,show_logs,show_losses,show_screenshots,leaderboard_enabled,public_profile_enabled").eq("user_id", authUser.id).maybeSingle(),
           supabase.from("follows").select("followed_id").eq("follower_id", authUser.id),
           supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUser.id),
-          supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot").eq("user_id", authUser.id).order("id", { ascending: false }),
+          supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot,screenshot_path").eq("user_id", authUser.id).order("id", { ascending: false }),
         ]);
         const queryErrors = [
           ["user_states", stateError],
@@ -650,7 +656,7 @@ export default function App() {
       try {
         const { data, error } = await supabase
           .from("logs")
-          .select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot")
+          .select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot,screenshot_path")
           .eq("user_id", authUser.id)
           .order("id", { ascending: false });
         if (error) throw error;
@@ -798,29 +804,53 @@ export default function App() {
     setSuccess(log);
     setTimeout(() => setSuccess(null), 1600);
   };
-  const persistLog = async (log: Log, operation: "create" | "update" | "restore") => {
+  const persistLog = async (log: Log, operation: "create" | "update" | "restore", screenshotFile?: File | null, removeScreenshot = false) => {
     if (writing.current) return;
     writing.current = true; revision.current += 1; setBusy(true); setSaveStatus("Saving entry…");
+    const existingPath = logs.find(item => item.id === log.id)?.screenshotPath;
+    let uploadedPath: string | undefined;
     try {
-      if (authUser) await authenticatedWrite(() => supabase.from("logs").upsert(logToRow(log, authUser.id), { onConflict: "user_id,id" }));
-      setLogs(items => [log, ...items.filter(item => item.id !== log.id)].sort((a, b) => b.id - a.id));
+      let nextLog = log;
+      if (authUser && screenshotFile) {
+        uploadedPath = screenshotObjectPath(authUser.id, log.id, crypto.randomUUID(), screenshotFile.type);
+        const { error } = await supabase.storage.from(SCREENSHOT_BUCKET).upload(uploadedPath, screenshotFile, {
+          contentType: screenshotFile.type,
+          cacheControl: "3600",
+          upsert: false,
+        });
+        if (error) throw error;
+        nextLog = { ...log, screenshot: true, screenshotPath: uploadedPath };
+      } else if (removeScreenshot) {
+        nextLog = { ...log, screenshot: false, screenshotPath: undefined };
+      }
+      if (authUser) await authenticatedWrite(() => supabase.from("logs").upsert(logToRow(nextLog, authUser.id), { onConflict: "user_id,id" }));
+      if (authUser && existingPath && existingPath !== nextLog.screenshotPath) {
+        const { error } = await supabase.storage.from(SCREENSHOT_BUCKET).remove([existingPath]);
+        if (error) void trackProductEvent(authUser.id, "client_error", "storage", errorMetadata(error, "log_screenshot", "old_screenshot_cleanup_failed"));
+      }
+      setLogs(items => [nextLog, ...items.filter(item => item.id !== nextLog.id)].sort((a, b) => b.id - a.id));
       if (operation !== "restore") {
         setSheet(null); setEditing(null); setRepeatLog(null); draftId.current = null;
-        showSuccess(log);
+        showSuccess(nextLog);
       } else setUndoLog(null);
       setSaveStatus(authUser ? "Entry saved" : "Saved in demo");
-      if (authUser) void trackProductEvent(authUser.id, operation === "update" ? "log_updated" : "log_created", "logs", { type: log.type, category: log.category });
+      if (authUser) void trackProductEvent(authUser.id, operation === "update" ? "log_updated" : "log_created", "logs", { type: nextLog.type, category: nextLog.category, screenshot: Boolean(nextLog.screenshotPath) });
     } catch (error) {
+      if (authUser && uploadedPath) await supabase.storage.from(SCREENSHOT_BUCKET).remove([uploadedPath]);
       if (operation === "restore") setUndoLog({ log, owner: authUser?.id || null });
       setSaveStatus(operation === "restore" ? "Restore failed. Tap Undo to retry." : "Entry not saved. Your draft is still open. Tap Retry.");
       if (authUser) void trackProductEvent(authUser.id, "client_error", "logs", errorMetadata(error, "logs", `${operation}_failed`));
     } finally { writing.current = false; revision.current += 1; setBusy(false); }
   };
-  const add = (data: Omit<Log, "id">) => {
+  const add = (data: LogDraft) => {
     if (!draftId.current) draftId.current = Date.now();
-    return persistLog({ ...data, id: draftId.current }, "create");
+    const { screenshotFile, removeScreenshot, ...log } = data;
+    return persistLog({ ...log, id: draftId.current }, "create", screenshotFile, removeScreenshot);
   };
-  const updateLog = (id: number, data: Omit<Log, "id">) => persistLog({ ...data, id }, "update");
+  const updateLog = (id: number, data: LogDraft) => {
+    const { screenshotFile, removeScreenshot, ...log } = data;
+    return persistLog({ ...log, id }, "update", screenshotFile, removeScreenshot);
+  };
   const removeLog = async (id: number) => {
     if (writing.current) return;
     const removed = logs.find(item => item.id === id);
@@ -828,9 +858,15 @@ export default function App() {
     writing.current = true; revision.current += 1; setBusy(true); setSaveStatus("Deleting entry…");
     try {
       if (authUser) await authenticatedWrite(() => supabase.from("logs").delete().eq("user_id", authUser.id).eq("id", id));
+      let undoLogValue = removed;
+      if (authUser && removed.screenshotPath) {
+        const { error } = await supabase.storage.from(SCREENSHOT_BUCKET).remove([removed.screenshotPath]);
+        if (error) void trackProductEvent(authUser.id, "client_error", "storage", errorMetadata(error, "log_screenshot", "deleted_screenshot_cleanup_failed"));
+        else undoLogValue = { ...removed, screenshot: false, screenshotPath: undefined };
+      }
       setLogs(items => items.filter(item => item.id !== id));
       setEditing(null);
-      setUndoLog({ log: removed, owner: authUser?.id || null });
+      setUndoLog({ log: undoLogValue, owner: authUser?.id || null });
       setSaveStatus("Entry deleted");
       if (authUser) void trackProductEvent(authUser.id, "log_deleted", "logs");
     } catch (error) {
@@ -944,7 +980,7 @@ export default function App() {
             saveError={saveStatus.startsWith("Entry not saved")}
             defaultCategory={logs.find(log => log.type === sheet)?.category}
             close={() => { if (!busy) { setSheet(null); setEditing(null); setRepeatLog(null); draftId.current = null; } }}
-            save={(data: Omit<Log, "id">) => editing ? updateLog(editing.id, data) : add(data)}
+            save={(data: LogDraft) => editing ? updateLog(editing.id, data) : add(data)}
             remove={editing ? () => removeLog(editing.id) : undefined}
             customCategories={customCategories}
             onAddCustom={(item: [string, string]) => setCustomCategories((items) => items.some(([name]) => name.toLowerCase() === item[0].toLowerCase()) ? items : [...items, item])}
@@ -1247,6 +1283,7 @@ function HomeView({
                       {l.screenshot && <span><Camera /> Screenshot attached</span>}
                       <span><CalendarDays /> {l.dateKey ? new Date(`${l.dateKey}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : l.date || "Date unavailable"}</span>
                     </div>
+                    {l.screenshotPath && <SignedScreenshot path={l.screenshotPath} alt={`${l.title} screenshot`} className="log-screenshot-image" />}
                     <footer>
                       <button onClick={() => setShare(l)}><Share2 /> Share</button>
                       <button onClick={() => setEditing(l)}><Edit3 /> Edit</button>
@@ -1263,6 +1300,23 @@ function HomeView({
       </section>
     </div>
   );
+}
+function SignedScreenshot({ path, alt, className = "" }: { path: string; alt: string; className?: string }) {
+  const [url, setUrl] = useState("");
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setUrl(""); setFailed(false);
+    supabase.storage.from(SCREENSHOT_BUCKET).createSignedUrl(path, 600).then(({ data, error }) => {
+      if (!active) return;
+      if (error || !data?.signedUrl) setFailed(true);
+      else setUrl(data.signedUrl);
+    });
+    return () => { active = false; };
+  }, [path]);
+  if (failed) return <span className="screenshot-unavailable"><Camera /> Screenshot unavailable</span>;
+  if (!url) return <span className="screenshot-loading"><LoaderCircle className="spin" /> Loading screenshot</span>;
+  return <img className={className} src={url} alt={alt} loading="lazy" />;
 }
 function Title({
   over,
@@ -1308,9 +1362,12 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
     [customName, setCustomName] = useState(""),
     [customColor, setCustomColor] = useState("#1769ff"),
     [fileName, setFileName] = useState(""),
+    [screenshotFile, setScreenshotFile] = useState<File | null>(null),
+    [fileError, setFileError] = useState(""),
     [preview, setPreview] = useState<string | null>(null),
     [screenshotAttached, setScreenshotAttached] = useState(Boolean(initial?.screenshot)),
     [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => () => { if (preview?.startsWith("blob:")) URL.revokeObjectURL(preview); }, [preview]);
   const baseCategories = kind === "loss" ? LOSS_CATS : CATS;
   const savedCategories: Array<[string, string]> = [...customCategories, ...baseCategories].filter(
     ([name], index, items) => items.findIndex(([other]) => other.toLowerCase() === name.toLowerCase()) === index,
@@ -1447,10 +1504,18 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
               </Field>
               <Field label="SCREENSHOT · OPTIONAL">
                 <div className={screenshotAttached ? "upload-field has-file" : "upload-field"}>
-                  {preview ? <img src={preview} alt="Screenshot preview" /> : <Camera />}
-                  <label><b>{fileName || (screenshotAttached ? "Screenshot attached" : "Add screenshot")}</b><small>{screenshotAttached ? "Tap to replace" : "PNG or JPG"}</small><input type="file" accept="image/png,image/jpeg" onChange={(event) => { const file = event.target.files?.[0]; if (file) { setFileName(file.name); setPreview(URL.createObjectURL(file)); setScreenshotAttached(true); } }} /></label>
-                  {screenshotAttached && <button aria-label="Remove screenshot" onClick={() => { setScreenshotAttached(false); setPreview(null); setFileName(""); }}><X /></button>}
+                  {preview ? <img src={preview} alt="Screenshot preview" /> : initial?.screenshotPath ? <SignedScreenshot path={initial.screenshotPath} alt="Saved screenshot preview" /> : <Camera />}
+                  <label><b>{fileName || (screenshotAttached ? "Screenshot attached" : "Add screenshot")}</b><small>{screenshotAttached ? "Tap to replace" : "PNG, JPG or WebP · 8 MB max"}</small><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    setFileError("");
+                    if (!file) return;
+                    const validationError = screenshotFileError(file);
+                    if (validationError) { setFileError(validationError); event.target.value = ""; return; }
+                    setFileName(file.name); setScreenshotFile(file); setPreview(URL.createObjectURL(file)); setScreenshotAttached(true);
+                  }} /></label>
+                  {screenshotAttached && <button type="button" aria-label="Remove screenshot" onClick={() => { setScreenshotAttached(false); setScreenshotFile(null); setPreview(null); setFileName(""); setFileError(""); }}><X /></button>}
                 </div>
+                {fileError && <small className="screenshot-file-error" role="alert">{fileError}</small>}
               </Field>
             </div>
           </div>
@@ -1461,7 +1526,7 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
           <button
             className={`submit ${kind}`}
             disabled={busy || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || !title.trim() || !date}
-            onClick={() => save({ type: kind, amount: Number(amount), title: title.trim(), category, date: formatDate(date), dateKey: date, note: note.trim(), screenshot: screenshotAttached })}
+            onClick={() => save({ type: kind, amount: Number(amount), title: title.trim(), category, date: formatDate(date), dateKey: date, note: note.trim(), screenshot: screenshotAttached, screenshotPath: initial?.screenshotPath, screenshotFile, removeScreenshot: !screenshotAttached && Boolean(initial?.screenshotPath) })}
           >
             {busy ? "SAVING…" : saveError ? "RETRY" : initial && !isRepeat ? "SAVE CHANGES" : `LOG ${kind.toUpperCase()}`}
             <ArrowUpRight />
@@ -1973,6 +2038,13 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
   const deleteAccount = async () => {
     if (!authUser || deleteConfirm !== "DELETE") return;
     setDeleteBusy(true); setDeleteError("");
+    const { data: screenshotRows, error: screenshotQueryError } = await supabase.from("logs").select("screenshot_path").eq("user_id", authUser.id).not("screenshot_path", "is", null);
+    if (screenshotQueryError) { setDeleteError("Could not prepare your files for deletion. Please try again."); setDeleteBusy(false); return; }
+    const screenshotPaths = (screenshotRows || []).map(row => row.screenshot_path).filter((path): path is string => Boolean(path));
+    if (screenshotPaths.length) {
+      const { error: screenshotDeleteError } = await supabase.storage.from(SCREENSHOT_BUCKET).remove(screenshotPaths);
+      if (screenshotDeleteError) { setDeleteError("Could not remove your private screenshots. Please try again."); setDeleteBusy(false); return; }
+    }
     const { data: avatarFiles } = await supabase.storage.from("avatars").list(authUser.id, { limit: 100 });
     if (avatarFiles?.length) await supabase.storage.from("avatars").remove(avatarFiles.map((file) => `${authUser.id}/${file.name}`));
     await trackProductEvent(authUser.id, "account_deleted", "account");
