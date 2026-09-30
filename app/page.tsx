@@ -958,7 +958,7 @@ export default function App() {
       </AnimatePresence>
       <Bottom tab={tab} nav={nav} add={() => setQuick(true)} />
       {hydrated && authUser?.id && !demoMode && <MonthlyRecapPrompt key={authUser.id} userId={authUser.id} today={calendarDay} dates={logs.map(log=>log.dateKey)} blocked={Boolean(quick || sheet || editing || board || share || success || monthlyRecap || tab !== "home")} onOpen={setMonthlyRecap} />}
-      <AnimatePresence>{monthlyRecap && <Badge pop="recap" net={net} profile={profile} recapPeriod={monthlyRecap} recapOverride={periodSummary(logs,monthlyRecap)} close={()=>setMonthlyRecap(null)} />}</AnimatePresence>
+      <AnimatePresence>{monthlyRecap && <Badge pop="recap" net={net} recapPeriod={monthlyRecap} recapOverride={periodSummary(logs,monthlyRecap)} close={()=>setMonthlyRecap(null)} />}</AnimatePresence>
       <AnimatePresence>
         {quick && (
           <QuickLog
@@ -1765,12 +1765,12 @@ function Insights({ net, wins, losses, logs, freshStart, profile }: any) {
         </div>
       </section>
       <AnimatePresence>
-        {pop && <Badge pop={pop} net={net} profile={profile} recapPeriod={recapPeriod} recapOverride={recapFor(recapPeriod)} close={() => setPop(null)} />}
+        {pop && <Badge pop={pop} net={net} recapPeriod={recapPeriod} recapOverride={recapFor(recapPeriod)} close={() => setPop(null)} />}
       </AnimatePresence>
     </div>
   );
 }
-function Badge({ pop, net, profile, recapPeriod, recapOverride, close }: any) {
+function Badge({ pop, net, recapPeriod, recapOverride, close }: any) {
   return (
     <motion.div
       className="backdrop center"
@@ -1786,7 +1786,7 @@ function Badge({ pop, net, profile, recapPeriod, recapOverride, close }: any) {
         onMouseDown={(e) => e.stopPropagation()}
       >
         {pop === "recap" ? (
-          <RecapStory period={recapPeriod} recapOverride={recapOverride} profile={profile} />
+          <RecapStory period={recapPeriod} recapOverride={recapOverride} />
         ) : (
           <>
             <i className="giant">
@@ -1814,7 +1814,7 @@ function Badge({ pop, net, profile, recapPeriod, recapOverride, close }: any) {
     </motion.div>
   );
 }
-function RecapStory({ period, recapOverride, profile }: { period: string; recapOverride: PeriodSummary; profile?: ProfileData }) {
+function RecapStory({ period, recapOverride }: { period: string; recapOverride: PeriodSummary }) {
   const [slide, setSlide] = useState(0);
   const reduced = useReducedMotion();
   const [direction, setDirection] = useState(1);
@@ -1831,21 +1831,6 @@ function RecapStory({ period, recapOverride, profile }: { period: string; recapO
   };
   const net = recap.wins - recap.losses;
   const isYear = period.length === 4;
-  const topCategory = recap.categories[0]?.name;
-  const personality = recap.longestStreak >= 7
-    ? "THE CONSISTENT BUILDER"
-    : recap.activeDays >= 12
-      ? "THE EVERYDAY OPERATOR"
-      : topCategory === "Content"
-        ? "THE CONTENT MACHINE"
-        : topCategory === "Bounties"
-          ? "THE BOUNTY HUNTER"
-          : topCategory === "Dev"
-            ? "THE SHIPPER"
-            : net < 0
-              ? "THE COMEBACK BUILDER"
-              : "THE PROGRESS BUILDER";
-  const username = profile?.username || "upby-user";
   const next = () => { setDirection(1); setSlide((value) => Math.min(5, value + 1)); };
   const previous = () => { setDirection(-1); setSlide((value) => Math.max(0, value - 1)); };
   return (
@@ -1867,10 +1852,6 @@ function RecapStory({ period, recapOverride, profile }: { period: string; recapO
           onDragEnd={(_, info) => info.offset.x < -55 ? next() : info.offset.x > 55 ? previous() : null}
         >
           <Logo />
-          <div className="story-owner">
-            {profile?.avatarUrl ? <img src={profile.avatarUrl} alt="" /> : <UserRound />}
-            <span>@{username}</span>
-          </div>
           {slide === 0 && <>
             <div className="story-icon-stage result-icons">
               <motion.i animate={{ rotate: [0, 8, 0], y: [0, -5, 0] }} transition={{ duration: 2.4, repeat: reduced ? 0 : Infinity }}><ArrowUpRight /></motion.i>
@@ -1916,9 +1897,9 @@ function RecapStory({ period, recapOverride, profile }: { period: string; recapO
               <Trophy className="orbit-icon two" />
               <Star className="orbit-icon three" />
             </div>
-            <span>YOUR UPBY TYPE</span>
-            <h2 className="story-personality">{personality}</h2>
-            <b>{recap.longestStreak} DAY LONGEST STREAK</b>
+            <span>CONSISTENCY</span>
+            <h2><RecapValue value={recap.longestStreak} currency={false} /></h2>
+            <b>DAY LONGEST STREAK</b>
             <div className="story-rank"><Trophy /><span>DAYS LOGGED</span><strong>{recap.activeDays}</strong></div>
           </>}
           {slide === 4 && <>
@@ -1942,10 +1923,6 @@ function RecapStory({ period, recapOverride, profile }: { period: string; recapO
               <Sparkles className="orbit-icon three" />
             </div>
             <span>{"MY " + label.toUpperCase()}</span>
-            <div className="story-signature">
-              {profile?.avatarUrl ? <img src={profile.avatarUrl} alt="" /> : <UserRound />}
-              <b>@{username}</b>
-            </div>
             <div className="final-split"><b>{money(recap.wins)}<small>WINS</small></b><b>{money(recap.losses)}<small>LOSSES</small></b></div>
             <h2><RecapValue value={net} signed /></h2>
             <b>UP BY</b>
