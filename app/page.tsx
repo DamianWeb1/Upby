@@ -674,6 +674,9 @@ export default function App() {
     window.addEventListener("focus", onFocus);
     window.addEventListener("online", onFocus);
     document.addEventListener("visibilitychange", onVisibility);
+    const pollTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible" && navigator.onLine) void refreshLogs();
+    }, 30000);
     const channel = supabase
       .channel(`upby-logs-${authUser.id}`)
       .on(
@@ -683,7 +686,10 @@ export default function App() {
       )
       .subscribe((status, error) => {
         if (status === "SUBSCRIBED") { void refreshLogs(); return; }
-        if (/jwt|token.*expired/i.test(error?.message || "") && !recoveringAuth) {
+        const realtimeMessage = error?.message || "";
+        const authTimingError = /jwt|token.*expired|issued at future/i.test(realtimeMessage);
+        const transientConnectionError = /transport failure|socket closed|heartbeat timeout/i.test(realtimeMessage);
+        if (authTimingError && !recoveringAuth) {
           recoveringAuth = true;
           void supabase.auth.refreshSession().then(async ({ data, error: refreshError }) => {
             if (!refreshError && data.session && active) {
@@ -693,7 +699,7 @@ export default function App() {
           }).catch(() => undefined).finally(() => { recoveringAuth = false; });
         }
 
-        if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && document.visibilityState === "visible" && navigator.onLine && Date.now() - lastRealtimeError > 60000) {
+        if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && !authTimingError && !transientConnectionError && document.visibilityState === "visible" && navigator.onLine && Date.now() - lastRealtimeError > 60000) {
           lastRealtimeError = Date.now();
           void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "logs_realtime", "realtime_failed"));
         }
@@ -703,6 +709,7 @@ export default function App() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("online", onFocus);
+      window.clearInterval(pollTimer);
       void supabase.removeChannel(channel);
     };
   }, [hydrated, authUser?.id, demoMode]);
