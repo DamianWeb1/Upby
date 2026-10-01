@@ -414,6 +414,35 @@ function localToday() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
+function shiftDateKey(key: string, offset: number) {
+  const [year, month, day] = key.split("-").map(Number);
+  const date = new Date(year, month - 1, day + offset, 12);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function logGroupLabel(log: Log, today: string) {
+  if (!validDateKey(log.dateKey)) return "Date not set";
+  if (log.dateKey === today) return "Today";
+  if (log.dateKey === shiftDateKey(today, -1)) return "Yesterday";
+  return new Date(`${log.dateKey}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+function LoadingProgress({ stalled }: { stalled: boolean }) {
+  return (
+    <main className="loading-progress" aria-live="polite">
+      <header><Logo /><span>{stalled ? "Still loading your account" : "Loading your progress"}</span></header>
+      <section className="loading-hero" aria-hidden="true">
+        <i className="loading-line short" />
+        <i className="loading-line total" />
+        <i className="loading-line medium" />
+        <div><i /><i /></div>
+      </section>
+      <section className="loading-list" aria-hidden="true">
+        <i className="loading-line short" />
+        {[0, 1, 2].map(item => <div key={item}><i /><span><b /><b /></span></div>)}
+      </section>
+      {stalled && <button onClick={() => window.location.reload()}>TRY AGAIN</button>}
+    </main>
+  );
+}
 export default function App() {
   const [calendarDay, setCalendarDay] = useState(localToday);
   const [monthlyRecap, setMonthlyRecap] = useState<string | null>(null);
@@ -445,6 +474,7 @@ export default function App() {
     [share, setShare] = useState<Log | null>(null),
     [success, setSuccess] = useState<Log | null>(null),
     [toast, setToast] = useState("");
+  const [authTimedOut, setAuthTimedOut] = useState(false);
   const writing = useRef(false);
   const revision = useRef(0);
   const draftId = useRef<number | null>(null);
@@ -452,6 +482,11 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [undoLog, setUndoLog] = useState<{ log: Log; owner: string | null } | null>(null);
   const [repeatLog, setRepeatLog] = useState<Log | null>(null);
+  useEffect(() => {
+    if (hydrated && authReady) { setAuthTimedOut(false); return; }
+    const timer = window.setTimeout(() => setAuthTimedOut(true), 10000);
+    return () => window.clearTimeout(timer);
+  }, [hydrated, authReady]);
   useEffect(() => {
     setUndoLog(null); setRepeatLog(null); setMonthlyRecap(null); setSaveStatus(""); draftId.current = null;
   }, [authUser?.id]);
@@ -892,7 +927,7 @@ export default function App() {
     setTab("home");
   };
   if (!hydrated || !authReady) {
-    return <main className="auth-loading"><Logo /><LoaderCircle className="spin" /><span>Loading your progress</span></main>;
+    return <LoadingProgress stalled={authTimedOut} />;
   }
   if (!authUser && !demoMode) {
     return <AuthWelcome onDemo={() => { setDemoMode(true); setProfile(DEFAULT_PROFILE); setPrefs(DEFAULT_PREFS); setFollowing(["Maya"]); setCustomCategories([]); setFreshStart(false); setLogs(START); setStage("app"); }} />;
@@ -1058,6 +1093,27 @@ function HomeView({
   const isEmpty = freshStart && logs.length === 0;
   const activity = activityStats(logs, localToday());
   const streak = activity.current;
+  const currentPeriod = calendarDay.slice(0, 7);
+  const previousPeriod = shiftMonth(currentPeriod, -1);
+  const previousSummary = useMemo(() => periodSummary(logs as Log[], previousPeriod), [logs, previousPeriod]);
+  const previousLabel = new Date(`${previousPeriod}-01T12:00:00`).toLocaleDateString("en-US", { month: "long" });
+  const monthDifference = net - previousSummary.net;
+  const hasPreviousMonth = previousSummary.entries.length > 0;
+  const milestones = [7, 14, 30, 60, 100];
+  const reachedMilestone = [...milestones].reverse().find(milestone => milestone <= streak) || null;
+  const nextMilestone = milestones.find(milestone => milestone > streak) || null;
+  const milestoneStart = reachedMilestone || 0;
+  const milestoneProgress = nextMilestone ? Math.max(0, Math.min(100, ((streak - milestoneStart) / (nextMilestone - milestoneStart)) * 100)) : 100;
+  const shownLogGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; items: Log[] }>();
+    for (const log of shownLogs) {
+      const key = validDateKey(log.dateKey) ? log.dateKey : "undated";
+      const group = groups.get(key);
+      if (group) group.items.push(log);
+      else groups.set(key, { key, label: logGroupLabel(log, calendarDay), items: [log] });
+    }
+    return Array.from(groups.values()).sort((a, b) => a.key === "undated" ? 1 : b.key === "undated" ? -1 : b.key.localeCompare(a.key));
+  }, [shownLogs, calendarDay]);
 
   const liveLeaderboard: LeaderboardEntry[] = freshStart && leaderboard.length ? leaderboard : [{ rank: 1, user_id: authUserId, display_name: profile.displayName, username: profile.username, avatar_url: profile.avatarUrl, net, streak }];
   const ownLeaderboardEntry = liveLeaderboard.find((entry) => entry.user_id === authUserId) || liveLeaderboard[0];
@@ -1125,7 +1181,9 @@ function HomeView({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
           >
-            <><CalendarDays /> Today’s net · {signedMoney(activity.todayNet)}</>
+            {hasPreviousMonth
+              ? <><TrendingUp /> {monthDifference === 0 ? `Same as ${previousLabel}` : `${money(Math.abs(monthDifference))} ${monthDifference > 0 ? "ahead of" : "behind"} ${previousLabel}`}</>
+              : <><CalendarDays /> Today’s net · {signedMoney(activity.todayNet)}</>}
           </motion.small>
         </div>
         <div className="split">
@@ -1170,6 +1228,11 @@ function HomeView({
               <br />
               IN A ROW
             </b>
+          </div>
+          {reachedMilestone && <div className="streak-milestone"><Trophy /> {reachedMilestone}-DAY MILESTONE REACHED</div>}
+          <div className="streak-goal">
+            <span><i style={{ width: `${milestoneProgress}%` }} /></span>
+            <small>{nextMilestone ? `${nextMilestone - streak} day${nextMilestone - streak === 1 ? "" : "s"} to your ${nextMilestone}-day milestone` : "Top streak milestone reached"}</small>
           </div>
           <aside>
             {["M", "T", "W", "T", "F", "S", "S"].map((x, i) => (
@@ -1245,8 +1308,9 @@ function HomeView({
         </section>
         <div>
           {!invalidRange && filteredLogs.length === 0 && <p className="log-no-results">No matching logs. Try another search or clear your filters.</p>}
-          {shownLogs.map((l: Log) => (
-            <motion.article
+          {shownLogGroups.map(group => <section className="log-date-group" key={group.key}>
+            <h3>{group.label}</h3>
+            {group.items.map((l: Log) => <motion.article
               layout
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -1271,6 +1335,7 @@ function HomeView({
                 <span>
                   <b>{l.category}</b>
                   <small>{l.title}</small>
+                  {l.note && <em>{l.note}</em>}
                 </span>
                 <time dateTime={l.dateKey}>{logDateLabel(l.dateKey, l.date, calendarDay)}</time>
                 <motion.i animate={{ rotate: expanded === l.id ? 90 : 0 }}>
@@ -1300,8 +1365,8 @@ function HomeView({
                   </motion.div>
                 )}
               </AnimatePresence>
-            </motion.article>
-          ))}
+            </motion.article>)}
+          </section>)}
           {browsing && shownLogs.length < filteredLogs.length && <footer className="log-pagination"><button onClick={() => setVisibleCount(count => count + 20)}>Show more ({filteredLogs.length - shownLogs.length} remaining)</button></footer>}
         </div>
       </section>
@@ -1598,6 +1663,12 @@ function Insights({ net, wins, losses, logs, freshStart, profile }: any) {
   const money = insightMoney, signedMoney = insightSignedMoney;
   const categoryItems = summary.categories.slice(0, 5).map((item, index) => [item.name, signedMoney(item.net), ["big", "mid", "coral", "small", ""][index]]);
   const bestCategory = categoryItems.length ? String(categoryItems[0][0]) : "No logs yet";
+  const biggestWin = summary.entries
+    .filter(entry => entry.type === "win")
+    .reduce<Log | null>((largest, entry) => !largest || entry.amount > largest.amount ? entry : largest, null);
+  const biggestWinValue = biggestWin
+    ? `${money(biggestWin.amount)} · ${new Date(`${biggestWin.dateKey!}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    : "No wins yet";
   const earned = earnedFrom(logs, net);
   const years = Array.from(new Set([currentMonth().slice(0,4), recapYear, ...(logs as Log[]).filter(log => validDateKey(log.dateKey)).map(log => log.dateKey!.slice(0,4))])).sort().reverse();
   const recapOptions = Array.from({length:12}, (_, index) => `${recapYear}-${String(index+1).padStart(2,"0")}`);
@@ -1653,6 +1724,7 @@ function Insights({ net, wins, losses, logs, freshStart, profile }: any) {
           ["NUMBER OF WINS", String(winCount)],
           ["NUMBER OF LOSSES", String(lossCount)],
           ["LONGEST STREAK", `${summary.longestStreak} day${summary.longestStreak === 1 ? "" : "s"}`],
+          ["BIGGEST WIN", biggestWinValue],
           ["BEST CATEGORY", bestCategory],
         ].map((x, i) => (
           <div className={i === 0 ? "major" : ""} key={x[0]}>
