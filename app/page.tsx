@@ -52,7 +52,7 @@ import {
   LogOut,
   PartyPopper,
 } from "lucide-react";
-type Tab = "home" | "insights" | "profile";
+type Tab = "home" | "insights" | "leaderboard" | "profile";
 type Log = {
   id: number;
   type: "win" | "loss";
@@ -945,13 +945,13 @@ export default function App() {
       <header className="topbar">
         <Logo />
         <nav>
-          {(["home", "insights", "profile"] as Tab[]).map((x) => (
+          {(["home", "insights", "leaderboard", "profile"] as Tab[]).map((x) => (
             <button
               className={tab === x ? "active" : ""}
               onClick={() => nav(x)}
               key={x}
             >
-              {x}
+              {x === "insights" ? "Stats" : x === "leaderboard" ? "Rank" : x}
             </button>
           ))}
           <button className="desktop-log" onClick={() => setQuick(true)}>
@@ -993,6 +993,8 @@ export default function App() {
             />
           ) : tab === "insights" ? (
             <Insights {...{ net, wins, losses, logs, freshStart, profile }} />
+          ) : tab === "leaderboard" ? (
+            <Leaderboard embedded close={() => nav("home")} following={following} setFollowing={setFollowing} freshStart={freshStart} profile={profile} net={net} logs={logs} leaderboard={leaderboard} authUserId={authUser?.id} />
           ) : (
             <Profile {...{ net, wins, losses, logs, freshStart, profile, setProfile, prefs, setPrefs, authUser, demoMode, signOut, followingCount: following.length, followerCount, startLog: () => setQuick(true) }} />
           )}
@@ -1115,8 +1117,6 @@ function HomeView({
     return Array.from(groups.values()).sort((a, b) => a.key === "undated" ? 1 : b.key === "undated" ? -1 : b.key.localeCompare(a.key));
   }, [shownLogs, calendarDay]);
 
-  const liveLeaderboard: LeaderboardEntry[] = freshStart && leaderboard.length ? leaderboard : [{ rank: 1, user_id: authUserId, display_name: profile.displayName, username: profile.username, avatar_url: profile.avatarUrl, net, streak }];
-  const ownLeaderboardEntry = liveLeaderboard.find((entry) => entry.user_id === authUserId) || liveLeaderboard[0];
   if (isEmpty) {
     return (
       <div className="page first-home">
@@ -1215,7 +1215,7 @@ function HomeView({
           <div className="first-unlocked-stat"><b>{streak}</b><span>DAY STREAK</span></div>
         </motion.section>
       )}
-      <div className="duo">
+      <div className="home-overview">
         <section className="streak block">
           <label>
             <Flame />
@@ -1258,38 +1258,14 @@ function HomeView({
             </motion.p>
           </AnimatePresence>
         </section>
-        <button className="rank block" onClick={() => setBoard(true)}>
-          <label>
-            <Globe2 />
-            GLOBAL THIS MONTH
-          </label>
-          <h2>
-            YOU’RE <strong>{freshStart ? `#${ownLeaderboardEntry.rank}` : "#38"}</strong>
-            <ArrowUpRight />
-          </h2>
-          {(freshStart ? liveLeaderboard.slice(0, 5).map((entry) => [Number(entry.rank), entry.display_name, signedMoney(Number(entry.net)), entry.user_id]) : [
-            [36, "Maya", "+8.1K"],
-            [37, "Chris", "+6.4K"],
-            [38, "Damian", "+4.3K"],
-            [39, "Noah", "+4.1K"],
-            [40, "Alex", "+3.8K"],
-          ]).map((x) => (
-            <div className={freshStart ? x[3] === authUserId ? "me" : "" : x[0] === 38 ? "me" : ""} key={`${x[0]}-${x[1]}`}>
-              <b>#{x[0]}</b>
-              <span>{x[1]}</span>
-              <em>{x[2]}</em>
-            </div>
-          ))}
-        </button>
-      </div>
-      <section className="recent">
+      <section className={browsing ? "recent browsing" : "recent"}>
         <div className="title">
           <div><span>YOUR ACTIVITY</span><h2>{browsing ? "Your logs" : "Recent logs"}</h2></div>
           <button onClick={() => { setViewAll(!browsing); resetFilters(); setExpanded(null); }}>
             {browsing ? "Recent only" : "View all"}<ArrowUpRight />
           </button>
         </div>
-        <section className="log-browser" aria-label="Search and filter logs">
+        {browsing && <section className="log-browser" aria-label="Search and filter logs">
           <label className="log-search"><Search size={18} /><input type="search" aria-label="Search log titles and notes" placeholder="Search titles or notes" value={filters.query} onChange={e => updateFilter("query", e.target.value)} /></label>
           <details>
             <summary>Filters{hasFilters ? " · Active" : ""}</summary>
@@ -1305,7 +1281,7 @@ function HomeView({
             <p>{filteredLogs.length} {filteredLogs.length === 1 ? "entry" : "entries"}{hasFilters ? " matching" : " total"}</p>
             <dl><div><dt>Wins</dt><dd>{formatTotal(totals.wins)}</dd></div><div><dt>Losses</dt><dd>{formatTotal(totals.losses)}</dd></div><div><dt>Net</dt><dd>{formatTotal(totals.net)}</dd></div></dl>
           </div>}
-        </section>
+        </section>}
         <div>
           {!invalidRange && filteredLogs.length === 0 && <p className="log-no-results">No matching logs. Try another search or clear your filters.</p>}
           {shownLogGroups.map(group => <section className="log-date-group" key={group.key}>
@@ -1370,6 +1346,7 @@ function HomeView({
           {browsing && shownLogs.length < filteredLogs.length && <footer className="log-pagination"><button onClick={() => setVisibleCount(count => count + 20)}>Show more ({filteredLogs.length - shownLogs.length} remaining)</button></footer>}
         </div>
       </section>
+      </div>
     </div>
   );
 }
@@ -2218,6 +2195,13 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
           <a className="public" href={`/${profile.username}`}>VIEW PUBLIC PROFILE<ArrowUpRight /></a>
         </div>
       </section>
+      <section className="profile-menu" aria-label="Account actions">
+        <button onClick={() => setSettings(!settings)}><span><Settings2 /><b>Settings</b><small>Privacy and account controls</small></span><ChevronRight /></button>
+        <button onClick={exportData}><span><Download /><b>Export data</b><small>Download your UPBY history</small></span><ChevronRight /></button>
+        {!demoMode && <button onClick={() => { setFeedbackStatus(""); setFeedbackOpen(true); }}><span><MessageSquare /><b>Send feedback</b><small>Share an idea or report an issue</small></span><ChevronRight /></button>}
+        <button className="danger" onClick={signOut}><span><LogOut /><b>{demoMode ? "Exit demo" : "Log out"}</b><small>{demoMode ? "Return to sign in" : authUser?.email}</small></span><ChevronRight /></button>
+        {exportStatus && <p role="status">{exportStatus}</p>}
+      </section>
       <AnimatePresence>
         {editingProfile && (
           <motion.div className="backdrop center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={() => setEditingProfile(false)}>
@@ -2377,7 +2361,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
     </div>
   );
 }
-function Leaderboard({ close, following, setFollowing, freshStart, profile, net, logs, leaderboard, authUserId }: any) {
+function Leaderboard({ close, following, setFollowing, freshStart, profile, net, logs, leaderboard, authUserId, embedded = false }: any) {
   const followLocks = useRef(new Set<string>());
   const [followBusy, setFollowBusy] = useState(false);
   const [followError, setFollowError] = useState("");
@@ -2434,12 +2418,12 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
   };
   return (
     <motion.div
-      className="leaderboard"
-      initial={{ x: "100%" }}
+      className={embedded ? "leaderboard embedded" : "leaderboard"}
+      initial={embedded ? false : { x: "100%" }}
       animate={{ x: 0 }}
-      exit={{ x: "100%" }}
+      exit={embedded ? undefined : { x: "100%" }}
     >
-      <header>
+      {!embedded && <header>
         <button onClick={close}>
           <ChevronLeft />
         </button>
@@ -2447,7 +2431,7 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
         <button>
           <Search />
         </button>
-      </header>
+      </header>}
       {followError && <p role="alert">{followError}</p>}
       <motion.main
         drag="x"
@@ -2629,6 +2613,7 @@ function Bottom({ tab, nav, add }: any) {
   const items: [[Tab, any], ...[Tab, any][]] = [
     ["home", Home],
     ["insights", BarChart3],
+    ["leaderboard", Globe2],
     ["profile", UserRound],
   ];
   return (
@@ -2645,7 +2630,7 @@ function Bottom({ tab, nav, add }: any) {
           >
             {tab === n && <motion.i layoutId="pill" />}
             <Icon />
-            <b>{n}</b>
+            <b>{n === "insights" ? "stats" : n === "leaderboard" ? "rank" : n}</b>
           </button>
         ))}
       </nav>
