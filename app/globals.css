@@ -4561,7 +4561,7 @@ button:disabled { cursor: wait; }
   display: grid;
   grid-template-columns: 330px minmax(0, 1fr);
   gap: 22px;
-  align-items: start;
+  align-items: stretch;
   margin-top: 22px;
 }
 .home-overview .block { padding: 22px; border-radius: 22px; }
@@ -4571,13 +4571,14 @@ button:disabled { cursor: wait; }
 .home-overview .streak aside i { width: 31px; height: 31px; }
 .home-overview .recent {
   min-width: 0;
+  height: 100%;
   margin-top: 0;
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 22px;
   background: var(--paper);
 }
-.home-overview .recent.browsing { grid-column: 1 / -1; }
+.home-overview .recent.browsing { grid-column: 1 / -1; height: auto; }
 .home-overview .recent .title { margin-bottom: 12px; }
 .home-overview .recent .title h2 { font-size: 28px; letter-spacing: -1.2px; }
 .home-overview .recent > div:last-child > button,

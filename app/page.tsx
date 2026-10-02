@@ -1081,7 +1081,7 @@ function HomeView({
   const categories = useMemo(() => Array.from(new Set((logs as Log[]).map(log => log.category))).sort(), [logs]);
   const hasFilters = Object.values(filters).some(Boolean);
   const browsing = viewAll || hasFilters;
-  const shownLogs = filteredLogs.slice(0, browsing ? visibleCount : 5);
+  const shownLogs = filteredLogs.slice(0, browsing ? visibleCount : 2);
   const invalidRange = !!(filters.from && filters.to && filters.from > filters.to);
   const updateFilter = (key: keyof LogFilters, value: string) => {
     setFilters(current => ({ ...current, [key]: value }));
@@ -1216,7 +1216,7 @@ function HomeView({
         </motion.section>
       )}
       <div className="home-overview">
-        <section className="streak block">
+        {!browsing && <section className="streak block">
           <label>
             <Flame />
             CURRENT STREAK
@@ -1257,12 +1257,12 @@ function HomeView({
                 : `${activity.week[streakDay]} · ${activity.weekActive[streakDay] ? "progress logged" : "No log on this day."}`}
             </motion.p>
           </AnimatePresence>
-        </section>
+        </section>}
       <section className={browsing ? "recent browsing" : "recent"}>
         <div className="title">
           <div><span>YOUR ACTIVITY</span><h2>{browsing ? "Your logs" : "Recent logs"}</h2></div>
           <button onClick={() => { setViewAll(!browsing); resetFilters(); setExpanded(null); }}>
-            {browsing ? "Recent only" : "View all"}<ArrowUpRight />
+            {browsing ? "Show less" : "Show all"}<ArrowUpRight />
           </button>
         </div>
         {browsing && <section className="log-browser" aria-label="Search and filter logs">
