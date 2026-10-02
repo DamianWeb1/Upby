@@ -4619,12 +4619,16 @@ button:disabled { cursor: wait; }
 .profile-actions { width: 100%; min-width: 0; }
 .profile-menu {
   grid-column: 2;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 22px;
   background: var(--paper);
 }
 .profile-menu > button {
+  flex: 1;
   width: 100%;
   min-height: 74px;
   padding: 14px 17px;
@@ -4705,6 +4709,7 @@ button:disabled { cursor: wait; }
   .big-avatar { width: 92px; height: 92px; }
   .profile-head h1 { font-size: 33px; }
   .profile-menu { margin-top: 18px; border-radius: 18px; }
+  .profile-menu { display: block; }
   .profile-menu > button { min-height: 66px; padding: 12px 14px; }
   .profile > .privacy,
   .profile > .profile-score,
