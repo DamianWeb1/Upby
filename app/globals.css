@@ -2653,11 +2653,41 @@ textarea:focus-visible {
   transform: scale(.96);
 }
 .log-sheet .field input,
-.log-sheet .field textarea {
+.log-sheet .field textarea,
+.log-sheet .field select {
   min-height: 48px;
+}
+.log-sheet .field select {
+  width: 100%;
+  border: 1.5px solid #bbb6ac;
+  border-radius: 13px;
+  background: white;
+  color: var(--ink);
+  padding: 0 12px;
+  font-weight: 750;
 }
 .log-sheet .field textarea {
   height: 108px;
+}
+.expense-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.category-heading {
+  min-height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.category-heading > button {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  font-size: 9px;
+  font-weight: 950;
+  letter-spacing: 1px;
 }
 .log-side-fields > .field-label {
   margin-top: 2px;
@@ -2726,6 +2756,63 @@ textarea:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
+.category-manager {
+  overflow: hidden;
+  margin-top: 5px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #ece8df;
+}
+.category-manager > header {
+  min-height: 0;
+  margin-bottom: 7px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.category-manager > header b {
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+.category-manager > header span {
+  color: var(--muted);
+  font-size: 9px;
+}
+.category-manager-row {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) repeat(4, 27px);
+  align-items: center;
+  gap: 5px;
+  margin-top: 5px;
+}
+.category-manager-row > i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.category-manager-row > input {
+  min-width: 0;
+  height: 31px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 750;
+}
+.category-manager-row > button {
+  width: 27px;
+  height: 27px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  display: grid;
+  place-items: center;
+}
+.category-manager-row > button:disabled { opacity: .28; }
+.category-manager-row > button.remove { color: #a62929; }
+.category-manager-row svg { width: 13px; }
 .log-meta {
   display: grid;
   grid-template-columns: .85fr 1.15fr;
@@ -3188,13 +3275,32 @@ textarea:focus-visible {
     min-height: 44px;
     padding: 11px;
   }
+  .log-sheet .field select {
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .expense-fields {
+    gap: 6px;
+  }
   .log-sheet .field textarea {
     height: 62px;
     min-height: 62px;
     padding: 10px;
   }
-  .log-side-fields > .field-label {
+  .log-side-fields > .field-label,
+  .category-heading {
     margin-top: 13px;
+  }
+  .category-manager {
+    padding: 8px;
+  }
+  .category-manager-row {
+    grid-template-columns: 10px minmax(0, 1fr) repeat(4, 25px);
+    gap: 4px;
+  }
+  .category-manager-row > button {
+    width: 25px;
+    height: 25px;
   }
   .log-sheet .cats {
     grid-template-columns: repeat(2, minmax(0, 1fr));

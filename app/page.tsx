@@ -20,6 +20,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Flame,
   Globe2,
   Home,
@@ -43,6 +44,7 @@ import {
   Star,
   Award,
   CircleDollarSign,
+  CreditCard,
   Download,
   MessageSquare,
   ShieldCheck,
@@ -62,6 +64,8 @@ type Log = {
   date: string;
   dateKey?: string;
   note?: string;
+  merchant?: string;
+  paymentMethod?: string;
   screenshot?: boolean;
   screenshotPath?: string;
 };
@@ -76,6 +80,8 @@ type LogRow = {
   date_label: string;
   date_key: string | null;
   note: string | null;
+  merchant: string | null;
+  payment_method: string | null;
   screenshot: boolean;
   screenshot_path: string | null;
 };
@@ -131,6 +137,13 @@ const LOSS_CATS: [[string, string], ...Array<[string, string]>] = [
   ["Refunds", "#8a63ff"],
   ["Other", "#8a8d9c"],
 ];
+const PAYMENT_METHODS: Record<string, string> = {
+  card: "Card",
+  bank_transfer: "Bank transfer",
+  crypto: "Crypto",
+  cash: "Cash",
+  other: "Other",
+};
 const START: Log[] = [
   {
     id: 1,
@@ -187,6 +200,8 @@ const logToRow = (log: Log, userId: string): LogRow => ({
   date_label: log.date,
   date_key: log.dateKey || null,
   note: log.note || null,
+  merchant: log.type === "loss" ? log.merchant || null : null,
+  payment_method: log.type === "loss" ? log.paymentMethod || null : null,
   screenshot: Boolean(log.screenshot),
   screenshot_path: log.screenshotPath || null,
 });
@@ -199,6 +214,8 @@ const rowToLog = (row: LogRow): Log => ({
   date: row.date_label,
   dateKey: row.date_key || undefined,
   note: row.note || undefined,
+  merchant: row.merchant || undefined,
+  paymentMethod: row.payment_method || undefined,
   screenshot: Boolean(row.screenshot_path || row.screenshot),
   screenshotPath: row.screenshot_path || undefined,
 });
@@ -598,7 +615,7 @@ export default function App() {
           supabase.from("profiles").select("display_name,username,avatar_url,bio,x_profile,show_totals,show_logs,show_losses,show_screenshots,leaderboard_enabled,public_profile_enabled").eq("user_id", authUser.id).maybeSingle(),
           supabase.from("follows").select("followed_id").eq("follower_id", authUser.id),
           supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUser.id),
-          supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot,screenshot_path").eq("user_id", authUser.id).order("id", { ascending: false }),
+          supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,merchant,payment_method,screenshot,screenshot_path").eq("user_id", authUser.id).order("id", { ascending: false }),
         ]);
         const queryErrors = [
           ["user_states", stateError],
@@ -691,7 +708,7 @@ export default function App() {
       try {
         const { data, error } = await supabase
           .from("logs")
-          .select("id,user_id,type,amount,category,title,date_label,date_key,note,screenshot,screenshot_path")
+          .select("id,user_id,type,amount,category,title,date_label,date_key,note,merchant,payment_method,screenshot,screenshot_path")
           .eq("user_id", authUser.id)
           .order("id", { ascending: false });
         if (error) throw error;
@@ -1028,6 +1045,20 @@ export default function App() {
             remove={editing ? () => removeLog(editing.id) : undefined}
             customCategories={customCategories}
             onAddCustom={(item: [string, string]) => setCustomCategories((items) => items.some(([name]) => name.toLowerCase() === item[0].toLowerCase()) ? items : [...items, item])}
+            onUpdateCustom={(currentName: string, next: [string, string]) => setCustomCategories((items) => {
+              const duplicate = items.some(([name]) => name.toLowerCase() === next[0].toLowerCase() && name.toLowerCase() !== currentName.toLowerCase());
+              if (duplicate) return items;
+              return items.map((item) => item[0] === currentName ? next : item);
+            })}
+            onRemoveCustom={(name: string) => setCustomCategories((items) => items.filter(([itemName]) => itemName !== name))}
+            onMoveCustom={(name: string, direction: -1 | 1) => setCustomCategories((items) => {
+              const index = items.findIndex(([itemName]) => itemName === name);
+              const nextIndex = index + direction;
+              if (index < 0 || nextIndex < 0 || nextIndex >= items.length) return items;
+              const next = [...items];
+              [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+              return next;
+            })}
           />
         )}
       </AnimatePresence>
@@ -1266,7 +1297,7 @@ function HomeView({
           </button>
         </div>
         {browsing && <section className="log-browser" aria-label="Search and filter logs">
-          <label className="log-search"><Search size={18} /><input type="search" aria-label="Search log titles and notes" placeholder="Search titles or notes" value={filters.query} onChange={e => updateFilter("query", e.target.value)} /></label>
+          <label className="log-search"><Search size={18} /><input type="search" aria-label="Search log titles, notes and payees" placeholder="Search titles, notes or payees" value={filters.query} onChange={e => updateFilter("query", e.target.value)} /></label>
           <details>
             <summary>Filters{hasFilters ? " · Active" : ""}</summary>
             <div className="log-filter-fields">
@@ -1329,6 +1360,8 @@ function HomeView({
                     <p>{l.note || "No note added for this log."}</p>
                     <div>
                       {l.screenshot && <span><Camera /> Screenshot attached</span>}
+                      {l.type === "loss" && l.merchant && <span><CircleDollarSign /> Paid to {l.merchant}</span>}
+                      {l.type === "loss" && l.paymentMethod && <span><CreditCard /> {PAYMENT_METHODS[l.paymentMethod] || l.paymentMethod}</span>}
                       <span><CalendarDays /> {l.dateKey ? new Date(`${l.dateKey}T00:00:00`).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : l.date || "Date unavailable"}</span>
                     </div>
                     {l.screenshotPath && <SignedScreenshot path={l.screenshotPath} alt={`${l.title} screenshot`} className="log-screenshot-image" />}
@@ -1391,7 +1424,7 @@ function Title({
     </div>
   );
 }
-function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = false, defaultCategory, close, save, remove, customCategories = [], onAddCustom }: any) {
+function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = false, defaultCategory, close, save, remove, customCategories = [], onAddCustom, onUpdateCustom, onRemoveCustom, onMoveCustom }: any) {
   const today = localToday();
   let startingDate = initial?.dateKey || today;
   if (!initial?.dateKey && initial?.date === "Yesterday") {
@@ -1406,8 +1439,12 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
     [title, setTitle] = useState(initial?.title || ""),
     [category, setCategory] = useState(initial?.category || defaultCategory || (type === "loss" ? LOSS_CATS[0][0] : CATS[0][0])),
     [note, setNote] = useState(initial?.note || ""),
+    [merchant, setMerchant] = useState(initial?.merchant || ""),
+    [paymentMethod, setPaymentMethod] = useState(initial?.paymentMethod || ""),
     [date, setDate] = useState(startingDate),
     [custom, setCustom] = useState(false),
+    [manageCustom, setManageCustom] = useState(false),
+    [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({}),
     [customName, setCustomName] = useState(""),
     [customColor, setCustomColor] = useState("#1769ff"),
     [fileName, setFileName] = useState(""),
@@ -1439,6 +1476,22 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
     setCategory(nextCategory[0]);
     onAddCustom?.(nextCategory);
     setCustom(false);
+    setCustomName("");
+  };
+  const renameCustom = (currentName: string, color: string) => {
+    const nextName = (categoryDrafts[currentName] ?? currentName).trim();
+    if (!nextName || nextName === currentName) return;
+    onUpdateCustom?.(currentName, [nextName, color]);
+    if (category === currentName) setCategory(nextName);
+    setCategoryDrafts((items) => {
+      const next = { ...items };
+      delete next[currentName];
+      return next;
+    });
+  };
+  const removeCustom = (name: string) => {
+    onRemoveCustom?.(name);
+    if (category === name) setCategory(baseCategories[0][0]);
   };
   const changeKind = (nextKind: "win" | "loss") => {
     if (nextKind === kind) return;
@@ -1490,7 +1543,7 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
         <div className="log-form-grid">
           <div className="log-main-fields">
             <label className="amount">
-              <span>AMOUNT</span>
+              <span>{kind === "loss" ? "EXPENSE AMOUNT" : "AMOUNT"}</span>
               <div>
                 $
                 <input
@@ -1503,15 +1556,30 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
               </div>
             </label>
             <div className="amount-presets">
-              {[100, 500, 1000].map((value) => <button key={value} onClick={() => setAmount(String(value))}>+{money(value)}</button>)}
+              {[100, 500, 1000].map((value) => <button key={value} onClick={() => setAmount(String(value))}>{kind === "win" ? "+" : ""}{money(value)}</button>)}
             </div>
-            <Field label={kind === "loss" ? "EXPENSE OR SETBACK" : "PROJECT OR TITLE"}>
+            <Field label={kind === "loss" ? "WHAT WAS IT FOR?" : "PROJECT OR TITLE"}>
               <input
-                placeholder={kind === "loss" ? "What did this cost you?" : "What happened?"}
+                placeholder={kind === "loss" ? "Subscription, transport, ad spend…" : "What happened?"}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
             </Field>
+            {kind === "loss" && <div className="expense-fields">
+              <Field label="PAID TO · OPTIONAL">
+                <input placeholder="Person, store or service" value={merchant} maxLength={120} onChange={(e) => setMerchant(e.target.value)} />
+              </Field>
+              <Field label="PAYMENT METHOD · OPTIONAL">
+                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                  <option value="">Not specified</option>
+                  <option value="card">Card</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="crypto">Crypto</option>
+                  <option value="cash">Cash</option>
+                  <option value="other">Other</option>
+                </select>
+              </Field>
+            </div>}
             <Field label="NOTE · OPTIONAL">
               <textarea
                 placeholder="Add a little context"
@@ -1521,7 +1589,10 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
             </Field>
           </div>
           <div className="log-side-fields">
-            <label className="field-label">{kind === "loss" ? "LOSS CATEGORY" : "CATEGORY"}</label>
+            <div className="category-heading">
+              <label className="field-label">{kind === "loss" ? "EXPENSE CATEGORY" : "CATEGORY"}</label>
+              {customCategories.length > 0 && <button type="button" onClick={() => setManageCustom((value) => !value)}>{manageCustom ? "DONE" : "MANAGE"}</button>}
+            </div>
             <div className="cats">
               {categoryList.map(([c, color]) => (
                 <button
@@ -1546,6 +1617,19 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
                   </div>
                 </motion.div>
               )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {manageCustom && customCategories.length > 0 && <motion.div className="category-manager" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
+                <header><b>YOUR CATEGORIES</b><span>Rename, reorder or remove</span></header>
+                {customCategories.map(([name, color]: [string, string], index: number) => <div className="category-manager-row" key={name}>
+                  <i style={{ background: color }} />
+                  <input aria-label={`Rename ${name}`} value={categoryDrafts[name] ?? name} maxLength={40} onChange={(event) => setCategoryDrafts((items) => ({ ...items, [name]: event.target.value }))} />
+                  <button type="button" aria-label={`Save ${name}`} onClick={() => renameCustom(name, color)}><Check /></button>
+                  <button type="button" aria-label={`Move ${name} up`} disabled={index === 0} onClick={() => onMoveCustom?.(name, -1)}><ChevronUp /></button>
+                  <button type="button" aria-label={`Move ${name} down`} disabled={index === customCategories.length - 1} onClick={() => onMoveCustom?.(name, 1)}><ChevronDown /></button>
+                  <button type="button" className="remove" aria-label={`Remove ${name}`} onClick={() => removeCustom(name)}><Trash2 /></button>
+                </div>)}
+              </motion.div>}
             </AnimatePresence>
             <div className="log-meta">
               <Field label="DATE">
@@ -1575,7 +1659,7 @@ function LogSheet({ type, initial, isRepeat = false, busy = false, saveError = f
           <button
             className={`submit ${kind}`}
             disabled={busy || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || !title.trim() || !date}
-            onClick={() => save({ type: kind, amount: Number(amount), title: title.trim(), category, date: formatDate(date), dateKey: date, note: note.trim(), screenshot: screenshotAttached, screenshotPath: initial?.screenshotPath, screenshotFile, removeScreenshot: !screenshotAttached && Boolean(initial?.screenshotPath) })}
+            onClick={() => save({ type: kind, amount: Number(amount), title: title.trim(), category, date: formatDate(date), dateKey: date, note: note.trim(), merchant: kind === "loss" ? merchant.trim() : undefined, paymentMethod: kind === "loss" ? paymentMethod : undefined, screenshot: screenshotAttached, screenshotPath: initial?.screenshotPath, screenshotFile, removeScreenshot: !screenshotAttached && Boolean(initial?.screenshotPath) })}
           >
             {busy ? "SAVING…" : saveError ? "RETRY" : initial && !isRepeat ? "SAVE CHANGES" : `LOG ${kind.toUpperCase()}`}
             <ArrowUpRight />
