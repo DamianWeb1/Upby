@@ -47,6 +47,7 @@ AS $function$
     totals.net,
     totals.streak
   from totals
+  where totals.net >= 1
   order by net desc, created_at asc
   limit 100;
 $function$;
@@ -85,6 +86,7 @@ AS $function$
     totals.net,
     totals.streak
   from totals
+  where totals.net >= 1
   order by rank, totals.created_at
   limit 100;
 $function$;
@@ -142,4 +144,3 @@ AS $function$
     and (p.public_profile_enabled or (select auth.uid()) = p.user_id)
   limit 1;
 $function$;
-

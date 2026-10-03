@@ -2373,11 +2373,11 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
     if (!freshStart) return;
     let active = true;
     supabase.rpc(view === "FRIENDS" ? "get_friends_leaderboard" : "get_leaderboard", { leaderboard_period: period === "ALL TIME" ? "all_time" : "this_month" })
-      .then(({ data, error }) => { if (!error && active) setLiveEntries((data || []) as LeaderboardEntry[]); });
+      .then(({ data, error }) => { if (!error && active) setLiveEntries(((data || []) as LeaderboardEntry[]).filter(entry => Number(entry.net) >= 1)); });
     return () => { active = false; };
   }, [freshStart, period, view, following]);
   const users = useMemo(
-    () => freshStart ? (liveEntries.length ? liveEntries.map((entry) => [Number(entry.rank), entry.display_name, entry.username, signedMoney(Number(entry.net)), Number(entry.streak), entry.user_id, entry.avatar_url]) : view === "GLOBAL" ? [
+    () => freshStart ? (liveEntries.length ? liveEntries.filter(entry => Number(entry.net) >= 1).map((entry) => [Number(entry.rank), entry.display_name, entry.username, signedMoney(Number(entry.net)), Number(entry.streak), entry.user_id, entry.avatar_url]) : view === "GLOBAL" && net >= 1 ? [
       [1, profile.displayName, profile.username, signedMoney(net), activityStats(logs, localToday()).current, authUserId, profile.avatarUrl],
     ] : [
     ]) : [
