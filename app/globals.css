@@ -4637,8 +4637,8 @@ button:disabled { cursor: wait; }
 .topbar nav button { padding: 9px 17px; font-size: 12px; }
 .page { max-width: 1120px; padding: 34px 24px 80px; }
 .hero {
-  grid-template-columns: minmax(0, .72fr) minmax(0, 1.28fr);
-  grid-template-areas: "hello number" "split actions";
+  grid-template-columns: minmax(0, .68fr) minmax(0, 1.15fr) 126px;
+  grid-template-areas: "hello number rate" "split actions rate";
   align-items: center;
   gap: 18px 34px;
   padding: 30px 34px;
@@ -4647,6 +4647,7 @@ button:disabled { cursor: wait; }
 }
 .hero .hello { grid-area: hello; }
 .hero .hero-number { grid-area: number; }
+.hero .hero-rate { grid-area: rate; }
 .hero .split { grid-area: split; grid-column: auto; align-self: center; }
 .hero .hero-actions { grid-area: actions; grid-column: auto; margin: 0; }
 .hello p { font-size: 14px; }
@@ -4656,6 +4657,35 @@ button:disabled { cursor: wait; }
 .split { gap: 18px; font-size: 13px; }
 .hero-actions { gap: 9px; }
 .hero-actions button { min-height: 48px; padding: 12px; border-radius: 13px; font-size: 13px; }
+.hero-rate {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.hero-rate > div {
+  position: relative;
+  width: 108px;
+  height: 108px;
+}
+.hero-rate svg { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+.hero-rate circle { fill: none; stroke-width: 9; }
+.hero-rate-track { stroke: #ffffff1f; }
+.hero-rate-value { stroke: var(--lime); stroke-linecap: round; }
+.hero-rate > div > strong {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: white;
+  font-size: 25px;
+  letter-spacing: -1.5px;
+}
+.hero-rate > span { margin-top: 2px; font-size: 9px; font-weight: 950; letter-spacing: 1.5px; }
+.hero-rate > small { margin-top: 3px; color: #bdc0cf; font-size: 9px; white-space: nowrap; }
 .monthly-goal { margin: 20px 0 0; padding: 18px 20px; border-width: 1px; border-radius: 18px; box-shadow: none; }
 .monthly-goal header span { font-size: 9px; }
 .monthly-goal h2 { margin: 4px 0; font-size: 21px; }
@@ -4779,14 +4809,19 @@ button:disabled { cursor: wait; }
   .page { padding: 6px 10px 36px; }
   .hero {
     display: grid;
-    grid-template-columns: 1fr;
-    grid-template-areas: "hello" "number" "split" "actions";
+    grid-template-columns: minmax(0, 1fr) 82px;
+    grid-template-areas: "hello hello" "number rate" "split rate" "actions actions";
     gap: 8px;
     padding: 18px 16px 16px;
     border-radius: 20px;
   }
   .hello h1 { margin: 2px 0 8px; font-size: 28px; letter-spacing: -1.5px; }
   .hero-number strong { margin: 3px 0; font-size: clamp(50px, 17vw, 70px); letter-spacing: -4px; }
+  .hero-rate > div { width: 76px; height: 76px; }
+  .hero-rate circle { stroke-width: 8; }
+  .hero-rate > div > strong { font-size: 19px; letter-spacing: -1px; }
+  .hero-rate > span { font-size: 7px; letter-spacing: 1px; }
+  .hero-rate > small { font-size: 7px; }
   .split { margin: 4px 0 8px; gap: 12px; font-size: 11px; }
   .hero-actions { grid-template-columns: 1fr 1fr; gap: 7px; }
   .hero-actions button { min-height: 44px; padding: 9px 3px; font-size: 12px; }

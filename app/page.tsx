@@ -1127,6 +1127,12 @@ function HomeView({
   const activity = activityStats(logs, localToday());
   const streak = activity.current;
   const currentPeriod = calendarDay.slice(0, 7);
+  const currentMonthEntries = useMemo(
+    () => (logs as Log[]).filter(log => validDateKey(log.dateKey) && log.dateKey!.startsWith(currentPeriod)),
+    [logs, currentPeriod],
+  );
+  const monthWinCount = currentMonthEntries.filter(log => log.type === "win").length;
+  const winRate = currentMonthEntries.length ? Math.round((monthWinCount / currentMonthEntries.length) * 100) : 0;
   const previousPeriod = shiftMonth(currentPeriod, -1);
   const previousSummary = useMemo(() => periodSummary(logs as Log[], previousPeriod), [logs, previousPeriod]);
   const previousLabel = new Date(`${previousPeriod}-01T12:00:00`).toLocaleDateString("en-US", { month: "long" });
@@ -1217,6 +1223,26 @@ function HomeView({
               : <><CalendarDays /> Today’s net · {signedMoney(activity.todayNet)}</>}
           </motion.small>
         </div>
+        <motion.div className="hero-rate" initial={{ opacity: 0, scale: .9 }} animate={{ opacity: 1, scale: 1 }}>
+          <div>
+            <svg viewBox="0 0 100 100" role="img" aria-label={`${winRate}% win rate this month`}>
+              <circle className="hero-rate-track" cx="50" cy="50" r="42" pathLength="100" />
+              <motion.circle
+                className="hero-rate-value"
+                cx="50"
+                cy="50"
+                r="42"
+                pathLength="100"
+                initial={{ strokeDasharray: "0 100" }}
+                animate={{ strokeDasharray: `${winRate} 100` }}
+                transition={{ duration: .8, ease: "easeOut" }}
+              />
+            </svg>
+            <strong>{winRate}%</strong>
+          </div>
+          <span>WIN RATE</span>
+          <small>{monthWinCount} of {currentMonthEntries.length} entries</small>
+        </motion.div>
         <div className="split">
           <span>
             <i className="win" />
