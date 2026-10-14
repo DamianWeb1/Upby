@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Privacy Policy" };
@@ -5,7 +6,7 @@ export const metadata: Metadata = { title: "Privacy Policy" };
 export default function PrivacyPage() {
   return (
     <main className="legal-page">
-      <a className="legal-back" href="/">U↗ UPBY</a>
+      <Link className="legal-back" href="/">U↗ UPBY</Link>
       <span>LAST UPDATED SEPTEMBER 25, 2026</span>
       <h1>Privacy Policy</h1>
       <p>UPBY stores the information needed to run your account and sync your progress across devices.</p>
@@ -37,7 +38,7 @@ export default function PrivacyPage() {
         <h2>Contact</h2>
         <p><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Send a privacy request on X ↗</a></p>
       </section>
-      <nav className="legal-links"><a href="/terms">Terms</a><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Feedback</a></nav>
+      <nav className="legal-links"><Link href="/terms">Terms</Link><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Feedback</a></nav>
     </main>
   );
 }

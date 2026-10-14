@@ -23,7 +23,11 @@ export default function MonthlyGoal({ client, userId, logs }: {
   const writing = useRef(false);
   const generation = useRef(0);
   const alive = useRef(true);
-  useEffect(() => { alive.current = true; return () => { alive.current = false; generation.current++; }; }, []);
+  useEffect(() => {
+    const requests = generation;
+    alive.current = true;
+    return () => { alive.current = false; requests.current++; };
+  }, []);
 
   const load = useCallback(async () => {
     if (writing.current) return;
@@ -41,6 +45,7 @@ export default function MonthlyGoal({ client, userId, logs }: {
   }, [client, userId, month]);
 
   useEffect(() => {
+    const requests = generation;
     setReady(false); setTarget(null); setEditing(false); setMessage("");
     void load();
     const resume = () => {
@@ -54,7 +59,7 @@ export default function MonthlyGoal({ client, userId, logs }: {
     window.addEventListener("online", resume);
     document.addEventListener("visibilitychange", resume);
     return () => {
-      generation.current++;
+      requests.current++;
       window.clearInterval(timer);
       window.removeEventListener("focus", resume);
       window.removeEventListener("online", resume);

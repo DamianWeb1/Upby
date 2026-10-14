@@ -1,5 +1,7 @@
 "use client";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { errorMetadata } from "./error-metadata";
 import { AnimatePresence, m as motion, useReducedMotion, MotionConfig } from "framer-motion";
 import { createClient } from "@supabase/supabase-js";
 import MonthlyGoal from "./MonthlyGoal";
@@ -233,22 +235,6 @@ const trackProductEvent = async (
     // Analytics must never interrupt the product experience.
   }
 };
-const errorMetadata = (
-  error: unknown,
-  source: string,
-  fallbackCode: string,
-): Record<string, string | number | boolean> => {
-  const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
-  const message = error instanceof Error ? error.message : typeof value.message === "string" ? value.message : "Unknown error";
-  return {
-    code: fallbackCode,
-    source,
-    error_code: String(value.code || value.name || "unknown").slice(0, 60),
-    status: typeof value.status === "number" ? value.status : 0,
-    message: message.slice(0, 180),
-    hint: typeof value.hint === "string" ? value.hint.slice(0, 180) : "",
-  };
-};
 function Logo() {
   return (
     <div className="logo">
@@ -318,7 +304,7 @@ function AuthWelcome({ onDemo }: { onDemo: () => void }) {
         </div>
         <div className="auth-divider"><span>OR</span></div>
         <button className="demo-button" onClick={onDemo}>Explore the demo <ArrowUpRight /></button>
-        <p className="auth-terms">By continuing, you agree to UPBY’s <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p>
+        <p className="auth-terms">By continuing, you agree to UPBY’s <Link href="/terms">Terms</Link> and <Link href="/privacy">Privacy Policy</Link>.</p>
       </section>
     </main>
   );
@@ -495,6 +481,12 @@ export default function App() {
   const writing = useRef(false);
   const revision = useRef(0);
   const draftId = useRef<number | null>(null);
+  const currentScreen = useRef("");
+  const authUserId: string | undefined = authUser?.id;
+  const authUserRef = useRef(authUser);
+  useEffect(() => {
+    authUserRef.current = authUser;
+  }, [authUser]);
   const [saveStatus, setSaveStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [undoLog, setUndoLog] = useState<{ log: Log; owner: string | null } | null>(null);
@@ -506,7 +498,7 @@ export default function App() {
   }, [hydrated, authReady]);
   useEffect(() => {
     setUndoLog(null); setRepeatLog(null); setMonthlyRecap(null); setSaveStatus(""); draftId.current = null;
-  }, [authUser?.id]);
+  }, [authUserId]);
   useEffect(() => {
     if (!undoLog || busy) return;
     const timer = window.setTimeout(() => setUndoLog(null), 10000);
@@ -558,7 +550,7 @@ export default function App() {
     };
   }, []);
   useEffect(() => {
-    if (!authUser || demoMode) return;
+    if (!authUserId || demoMode) return;
     let active = true;
     void fetch("/api/region", { cache: "no-store" })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Region lookup failed")))
@@ -567,17 +559,17 @@ export default function App() {
       })
       .catch(() => undefined);
     return () => { active = false; };
-  }, [authUser?.id, demoMode]);
+  }, [authUserId, demoMode]);
   useEffect(() => {
     if (!authReady) return;
-    if (!authUser) {
+    if (!authUserId) {
       setHydrated(true);
       return;
     }
     let active = true;
-    const userStorageKey = `${STORAGE_KEY}:${authUser.id}`;
+    const userStorageKey = `${STORAGE_KEY}:${authUserId}`;
     const applySavedState = (saved: Partial<PersistedState>) => {
-      if (!active || saved.version !== 2 || saved.ownerId !== authUser.id) return false;
+      if (!active || saved.version !== 2 || saved.ownerId !== authUserId) return false;
       if (saved.stage === "onboarding" || saved.stage === "app") setStage(saved.stage);
       if (saved.tab === "home" || saved.tab === "insights" || saved.tab === "profile") setTab(saved.tab);
       setFreshStart(true);
@@ -593,7 +585,7 @@ export default function App() {
     };
     const resetAccount = () => {
       if (!active) return;
-      setStage(authUser.user_metadata?.onboarding_complete ? "app" : "onboarding");
+      setStage(authUserRef.current?.user_metadata?.onboarding_complete ? "app" : "onboarding");
       setTab("home");
       setLogs([]);
       setFreshStart(true);
@@ -604,28 +596,23 @@ export default function App() {
     const hydrateAccount = async () => {
       setHydrated(false);
       try {
+        const responses = await Promise.all([
+          supabase.from("user_states").select("state").eq("user_id", authUserId).maybeSingle(),
+          supabase.from("profiles").select("display_name,username,avatar_url,bio,x_profile,show_totals,show_logs,show_losses,show_screenshots,leaderboard_enabled,public_profile_enabled").eq("user_id", authUserId).maybeSingle(),
+          supabase.from("follows").select("followed_id").eq("follower_id", authUserId),
+          supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUserId),
+          supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,merchant,payment_method,screenshot,screenshot_path").eq("user_id", authUserId).order("id", { ascending: false }),
+        ]);
         const [
           { data: stateData, error: stateError },
           { data: savedProfile, error: savedProfileError },
           { data: followedRows, error: followsError },
           { count: followers, error: followersError },
           { data: logRows, error: logsError },
-        ] = await Promise.all([
-          supabase.from("user_states").select("state").eq("user_id", authUser.id).maybeSingle(),
-          supabase.from("profiles").select("display_name,username,avatar_url,bio,x_profile,show_totals,show_logs,show_losses,show_screenshots,leaderboard_enabled,public_profile_enabled").eq("user_id", authUser.id).maybeSingle(),
-          supabase.from("follows").select("followed_id").eq("follower_id", authUser.id),
-          supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUser.id),
-          supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,merchant,payment_method,screenshot,screenshot_path").eq("user_id", authUser.id).order("id", { ascending: false }),
-        ]);
-        const queryErrors = [
-          ["user_states", stateError],
-          ["profiles", savedProfileError],
-          ["following", followsError],
-          ["followers", followersError],
-          ["logs", logsError],
-        ] as const;
-        queryErrors.forEach(([source, error]) => {
-          if (error) void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, source, "hydrate_query_failed"));
+        ] = responses;
+        const querySources = ["user_states", "profiles", "following", "followers", "logs"] as const;
+        responses.forEach((response, index) => {
+          if (response.error) void trackProductEvent(authUserId, "client_error", "sync", errorMetadata(response.error, querySources[index], "hydrate_query_failed", response));
         });
 
         let localState: Partial<PersistedState> | undefined;
@@ -633,7 +620,7 @@ export default function App() {
           const raw = window.localStorage.getItem(userStorageKey);
           localState = raw ? JSON.parse(raw) as Partial<PersistedState> : undefined;
         } catch (error) {
-          void trackProductEvent(authUser.id, "client_error", "storage", errorMetadata(error, "local_state", "local_state_invalid"));
+          void trackProductEvent(authUserId, "client_error", "storage", errorMetadata(error, "local_state", "local_state_invalid"));
           window.localStorage.removeItem(userStorageKey);
         }
         const remoteState = stateError ? undefined : stateData?.state as Partial<PersistedState> | undefined;
@@ -677,14 +664,14 @@ export default function App() {
           setLogs(localState.logs);
         }
       } catch (error) {
-        void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "hydrate_account", "hydrate_rejected"));
+        void trackProductEvent(authUserId, "client_error", "sync", errorMetadata(error, "hydrate_account", "hydrate_rejected"));
         try {
           const raw = window.localStorage.getItem(userStorageKey);
           const localState = raw ? JSON.parse(raw) as Partial<PersistedState> : undefined;
           if (!localState || !applySavedState(localState)) resetAccount();
           else if (active && Array.isArray(localState.logs)) setLogs(localState.logs);
         } catch (storageError) {
-          void trackProductEvent(authUser.id, "client_error", "storage", errorMetadata(storageError, "local_state", "local_state_invalid"));
+          void trackProductEvent(authUserId, "client_error", "storage", errorMetadata(storageError, "local_state", "local_state_invalid"));
           window.localStorage.removeItem(userStorageKey);
           resetAccount();
         }
@@ -694,9 +681,9 @@ export default function App() {
     };
     hydrateAccount();
     return () => { active = false; };
-  }, [authReady, authUser?.id]);
+  }, [authReady, authUserId]);
   useEffect(() => {
-    if (!hydrated || !authUser || demoMode) return;
+    if (!hydrated || !authUserId || demoMode) return;
     let active = true;
     let refreshing = false;
     let lastRealtimeError = 0;
@@ -709,12 +696,12 @@ export default function App() {
         const { data, error } = await supabase
           .from("logs")
           .select("id,user_id,type,amount,category,title,date_label,date_key,note,merchant,payment_method,screenshot,screenshot_path")
-          .eq("user_id", authUser.id)
+          .eq("user_id", authUserId)
           .order("id", { ascending: false });
         if (error) throw error;
         if (active && !writing.current && requestRevision === revision.current) setLogs((data as LogRow[] | null)?.map(rowToLog) || []);
       } catch (error) {
-        void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "logs", "log_refresh_failed"));
+        void trackProductEvent(authUserId, "client_error", "sync", errorMetadata(error, "logs", "log_refresh_failed"));
       } finally {
         refreshing = false;
       }
@@ -730,10 +717,10 @@ export default function App() {
       if (document.visibilityState === "visible" && navigator.onLine) void refreshLogs();
     }, 30000);
     const channel = supabase
-      .channel(`upby-logs-${authUser.id}`)
+      .channel(`upby-logs-${authUserId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "logs", filter: `user_id=eq.${authUser.id}` },
+        { event: "*", schema: "public", table: "logs", filter: `user_id=eq.${authUserId}` },
         () => { void refreshLogs(); },
       )
       .subscribe((status, error) => {
@@ -753,7 +740,7 @@ export default function App() {
 
         if ((status === "CHANNEL_ERROR" || status === "TIMED_OUT") && !authTimingError && !transientConnectionError && document.visibilityState === "visible" && navigator.onLine && Date.now() - lastRealtimeError > 60000) {
           lastRealtimeError = Date.now();
-          void trackProductEvent(authUser.id, "client_error", "sync", errorMetadata(error, "logs_realtime", "realtime_failed"));
+          void trackProductEvent(authUserId, "client_error", "sync", errorMetadata(error, "logs_realtime", "realtime_failed"));
         }
       });
     return () => {
@@ -764,7 +751,7 @@ export default function App() {
       window.clearInterval(pollTimer);
       void supabase.removeChannel(channel);
     };
-  }, [hydrated, authUser?.id, demoMode]);
+  }, [hydrated, authUserId, demoMode]);
   useEffect(() => {
     if (!hydrated || !authUser) return;
     const saved: PersistedState = { version: 2, ownerId: authUser.id, stage, tab, logs, freshStart: true, profile, prefs, following, customCategories };
@@ -789,12 +776,12 @@ export default function App() {
     return () => window.clearTimeout(syncTimer);
   }, [hydrated, authUser, stage, tab, logs, freshStart, profile, prefs, following, customCategories]);
   useEffect(() => {
-    if (!hydrated || !authUser || stage !== "app" || demoMode) return;
+    if (!hydrated || !authUserId || stage !== "app" || demoMode) return;
     let active = true;
     const timer = window.setTimeout(async () => {
       try {
         const { error: profileError } = await supabase.from("profiles").upsert({
-          user_id: authUser.id,
+          user_id: authUserId,
           display_name: profile.displayName,
           username: profile.username,
           avatar_url: profile.avatarUrl?.startsWith("data:") ? null : profile.avatarUrl,
@@ -810,41 +797,56 @@ export default function App() {
           updated_at: new Date().toISOString(),
         }, { onConflict: "user_id" });
         if (profileError) {
-          void trackProductEvent(authUser.id, "client_error", "profile", errorMetadata(profileError, "profiles", "profile_sync_failed"));
+          void trackProductEvent(authUserId, "client_error", "profile", errorMetadata(profileError, "profiles", "profile_sync_failed"));
           return;
         }
         const { data, error } = await supabase.rpc("get_leaderboard", { leaderboard_period: "this_month" });
         if (!error && active) setLeaderboard((data || []) as LeaderboardEntry[]);
       } catch (error) {
-        void trackProductEvent(authUser.id, "client_error", "profile", errorMetadata(error, "profiles", "profile_sync_rejected"));
+        void trackProductEvent(authUserId, "client_error", "profile", errorMetadata(error, "profiles", "profile_sync_rejected"));
       }
     }, 700);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [hydrated, authUser?.id, stage, demoMode, profile.displayName, profile.username, profile.avatarUrl, profile.bio, profile.xProfile, prefs, logs, countryCode]);
+  }, [hydrated, authUserId, stage, demoMode, profile.displayName, profile.username, profile.avatarUrl, profile.bio, profile.xProfile, prefs, logs, countryCode]);
   useEffect(() => {
-    if (!hydrated || !authUser || demoMode) return;
-    void trackProductEvent(authUser.id, "screen_view", "navigation", { screen: stage === "app" ? tab : stage });
-  }, [hydrated, authUser?.id, demoMode, stage, tab]);
+    currentScreen.current = stage === "app" ? tab : stage;
+  }, [stage, tab]);
   useEffect(() => {
-    if (!hydrated || !authUser || demoMode) return;
-    const reportError = (code: string) => {
-      const key = `upby:runtime-error:${authUser.id}:${code}`;
+    if (!hydrated || !authUserId || demoMode) return;
+    void trackProductEvent(authUserId, "screen_view", "navigation", { screen: stage === "app" ? tab : stage });
+  }, [hydrated, authUserId, demoMode, stage, tab]);
+  useEffect(() => {
+    if (!hydrated || !authUserId || demoMode) return;
+    const reportError = (code: string, details: Record<string, string | number> = {}) => {
+      const key = `upby:runtime-error:${authUserId}:${code}`;
       const now = Date.now();
       const lastReport = Number(window.sessionStorage.getItem(key) || 0);
       if (now - lastReport < 60_000) return;
       window.sessionStorage.setItem(key, String(now));
-      void trackProductEvent(authUser.id, "client_error", "runtime", { code });
+      void trackProductEvent(authUserId, "client_error", "runtime", { code, ...details });
+    };
+    const runtimeDetails = (error: unknown, fallback: string, file = "", line = 0, column = 0) => {
+      const stack = error instanceof Error && error.stack ? error.stack.split("\n").slice(0, 3).join(" | ") : "";
+      let path = file;
+      try { path = file ? new URL(file).pathname : ""; } catch {}
+      return {
+        message: ((error instanceof Error && error.message) || fallback || "No error message").slice(0, 180),
+        error_code: (error instanceof Error ? error.name : "unknown").slice(0, 60),
+        source: `${path}${line ? `:${line}:${column}` : ""}`.slice(0, 120) || "unknown",
+        hint: stack.slice(0, 180),
+        screen: currentScreen.current,
+      };
     };
     const onError = (event: ErrorEvent) => {
       if (/ResizeObserver loop|Script error/i.test(event.message || "")) return;
-      reportError("window_error");
+      reportError("window_error", runtimeDetails(event.error, event.message, event.filename, event.lineno, event.colno));
     };
     const onRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason;
       const name = reason instanceof DOMException ? reason.name : "";
       if (name === "AbortError" || name === "NotAllowedError") return;
       const message = reason instanceof Error ? reason.message : String(reason || "");
-      reportError(/failed to fetch|load failed|network/i.test(message) ? "network_rejection" : "unhandled_rejection");
+      reportError(/failed to fetch|load failed|network/i.test(message) ? "network_rejection" : "unhandled_rejection", runtimeDetails(reason, message));
     };
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
@@ -852,7 +854,7 @@ export default function App() {
       window.removeEventListener("error", onError);
       window.removeEventListener("unhandledrejection", onRejection);
     };
-  }, [hydrated, authUser?.id, demoMode]);
+  }, [hydrated, authUserId, demoMode]);
   const monthlyStats = useMemo(() => periodSummary(logs, calendarDay.slice(0,7)), [logs, calendarDay]);
   const { wins, losses, net } = monthlyStats;
   const nav = (x: Tab) => {
@@ -1092,14 +1094,12 @@ function HomeView({
   losses,
   logs,
   setSheet,
-  setBoard,
   setShare,
   setEditing,
   removeLog,
   repeatEntry,
   freshStart,
   profile,
-  leaderboard,
   authUserId,
   calendarDay,
 }: any) {
@@ -1736,7 +1736,7 @@ function earnedFrom(logs: Log[], net: number) {
     badge === "$10K MONTH" ? net >= 10000 : false
   );
 }
-function Insights({ net, wins, losses, logs, freshStart, profile }: any) {
+function Insights({ net, logs, freshStart, profile }: any) {
   const [month, setMonth] = useState(() => currentMonth());
   const [pop, setPop] = useState<string | null>(null);
   const [recapPeriod, setRecapPeriod] = useState(() => currentMonth());
@@ -2396,7 +2396,7 @@ function Profile({ net, wins, losses, logs, freshStart, profile, setProfile, pre
             </div>
             {!demoMode && <div className="account-tools"><button onClick={exportData}><Download />EXPORT DATA</button><button onClick={() => { setFeedbackStatus(""); setFeedbackOpen(true); }}><MessageSquare />SEND FEEDBACK</button><button className="danger" onClick={() => { setDeleteConfirm(""); setDeleteError(""); setDeleteOpen(true); }}><Trash2 />DELETE ACCOUNT</button></div>}
             {exportStatus && <p role="status">{exportStatus}</p>}
-            <nav className="account-links"><a href="/privacy">PRIVACY</a><a href="/terms">TERMS</a></nav>
+            <nav className="account-links"><Link href="/privacy">PRIVACY</Link><Link href="/terms">TERMS</Link></nav>
           </motion.section>
         )}
       </AnimatePresence>
@@ -2500,7 +2500,7 @@ function Leaderboard({ close, following, setFollowing, freshStart, profile, net,
       [39, "Noah", "noah", "+4,110", 7],
       [40, "Alex", "alex", "+3,820", 22],
     ],
-    [freshStart, liveEntries, profile.displayName, profile.username, profile.avatarUrl, net, logs.length, authUserId, view],
+    [freshStart, liveEntries, profile.displayName, profile.username, profile.avatarUrl, net, logs, authUserId, view],
   );
   const visibleUsers = users;
   const toggleFollow = async (user: any) => {

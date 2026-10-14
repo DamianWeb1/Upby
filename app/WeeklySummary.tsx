@@ -18,8 +18,8 @@ export default function WeeklySummary({ logs, username, avatarUrl }: { logs: Wee
     const timer = window.setInterval(refresh, 60000);
     return () => { document.removeEventListener("visibilitychange", refresh); window.clearInterval(timer); };
   }, []);
-  const bounds = anchor ? weekBounds(anchor, offset) : null;
-  const summary = useMemo(() => bounds ? weeklySummary(logs, bounds.from, bounds.to) : null, [logs, bounds?.from, bounds?.to]);
+  const bounds = useMemo(() => anchor ? weekBounds(anchor, offset) : null, [anchor, offset]);
+  const summary = useMemo(() => bounds ? weeklySummary(logs, bounds.from, bounds.to) : null, [logs, bounds]);
   if (!bounds || !summary) return null;
   const period = `${dateLabel(bounds.from)} – ${dateLabel(bounds.to)}`;
   const move = (next: number) => { setOffset(next); setStatus(""); };

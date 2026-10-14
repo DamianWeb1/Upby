@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { use, useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { ArrowLeft, ArrowUpRight, Camera, Flame, LoaderCircle, Medal, Share2, Trophy, UserPlus } from "lucide-react";
@@ -119,7 +120,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
   };
 
   if (loading) return <main className="public-page public-loading"><div className="public-avatar" /><p>Loading profile...</p></main>;
-  if (!profile) return <main className="public-page public-missing"><a href="/"><ArrowLeft /> Back to UPBY</a><h1>Profile unavailable.</h1><p>This profile is private, missing, or its username has changed.</p></main>;
+  if (!profile) return <main className="public-page public-missing"><Link href="/"><ArrowLeft /> Back to UPBY</Link><h1>Profile unavailable.</h1><p>This profile is private, missing, or its username has changed.</p></main>;
 
   const ownProfile = viewerId === profile.user_id;
   const badges = [profile.logs.length ? "FIRST LOG" : null, profile.streak >= 7 ? "7 DAY STREAK" : null, Number(profile.net) >= 1000 ? "$1K MONTH" : null].filter(Boolean);
@@ -127,7 +128,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
   return (
     <main className="public-page">
       <header>
-        <a href="/"><ArrowLeft /> Back to UPBY</a>
+        <Link href="/"><ArrowLeft /> Back to UPBY</Link>
         <button onClick={shareProfile}><Share2 /> Share</button>
       </header>
       <section className="public-identity">
@@ -157,7 +158,7 @@ export default function PublicProfilePage({ params }: { params: Promise<{ userna
         <span>RECENT PUBLIC LOGS</span>
         {profile.logs.length ? profile.logs.map((log) => <article key={log.id}><i className={log.type}>{log.type.toUpperCase()}</i><div><b>{log.category}</b><p>{log.title}</p></div><strong>{log.amount === null ? "PRIVATE" : `${log.type === "win" ? "+" : "-"}${money(Number(log.amount))}`}</strong><time dateTime={log.date_key || undefined}>{logDateLabel(log.date_key || undefined, log.date_label, localToday())}</time>{log.screenshot_path && <PublicScreenshot path={log.screenshot_path} title={log.title} />}</article>) : <div className="public-feed-empty"><Camera /><b>No public logs</b><p>This member has not shared any logs yet.</p></div>}
       </section>
-      <footer className="public-footer"><a href="/">UPBY</a><nav><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Feedback</a></nav></footer>
+      <footer className="public-footer"><Link href="/">UPBY</Link><nav><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Feedback</a></nav></footer>
     </main>
   );
 }

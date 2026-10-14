@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Terms of Use" };
@@ -5,7 +6,7 @@ export const metadata: Metadata = { title: "Terms of Use" };
 export default function TermsPage() {
   return (
     <main className="legal-page">
-      <a className="legal-back" href="/">U↗ UPBY</a>
+      <Link className="legal-back" href="/">U↗ UPBY</Link>
       <span>LAST UPDATED SEPTEMBER 20, 2026</span>
       <h1>Terms of Use</h1>
       <p>These terms apply when you create an account or use UPBY.</p>
@@ -33,7 +34,7 @@ export default function TermsPage() {
         <h2>Contact</h2>
         <p><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Send a question on X ↗</a></p>
       </section>
-      <nav className="legal-links"><a href="/privacy">Privacy</a><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Feedback</a></nav>
+      <nav className="legal-links"><Link href="/privacy">Privacy</Link><a href="https://x.com/damian__web" target="_blank" rel="noreferrer">Feedback</a></nav>
     </main>
   );
 }

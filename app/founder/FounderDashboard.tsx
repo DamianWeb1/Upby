@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { Activity, AlertTriangle, ArrowLeft, CheckCircle2, Globe2, MessageSquare, RefreshCw, ScrollText, UserCheck, Users } from "lucide-react";
@@ -63,7 +64,7 @@ export default function FounderDashboard() {
   if (status !== "ready" || !data) {
     return (
       <main className="founder-gate">
-        <a href="/"><ArrowLeft /> BACK TO UPBY</a>
+        <Link href="/"><ArrowLeft /> BACK TO UPBY</Link>
         <div className="founder-gate-card">
           <span>PRIVATE AREA</span>
           <h1>{status === "loading" ? "Loading dashboard" : status === "signed-out" ? "Sign in first" : status === "denied" ? "Access denied" : "Dashboard unavailable"}</h1>
@@ -88,7 +89,7 @@ export default function FounderDashboard() {
   return (
     <main className="founder-page">
       <header className="founder-header">
-        <div><a href="/"><ArrowLeft /> UPBY</a><span>PRIVATE FOUNDER VIEW</span><h1>Product pulse.</h1><p>Live usage, growth, feedback, and reliability in one place.</p></div>
+        <div><Link href="/"><ArrowLeft /> UPBY</Link><span>PRIVATE FOUNDER VIEW</span><h1>Product pulse.</h1><p>Live usage, growth, feedback, and reliability in one place.</p></div>
         <div className="founder-session"><i /><span>SIGNED IN AS</span><b>{email}</b><button onClick={() => void loadDashboard()} aria-label="Refresh dashboard"><RefreshCw /></button></div>
       </header>
 
