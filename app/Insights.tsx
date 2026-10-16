@@ -1,32 +1,20 @@
 "use client";
-import { AnimatePresence, MotionConfig, m as motion, useReducedMotion } from "framer-motion";
+import { AnimatePresence, m as motion } from "framer-motion";
 import {
-  ArrowUpRight,
-  Award,
-  BarChart3,
   CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
-  Crown,
-  Flame,
   Lock,
   Medal,
-  Share2,
-  ShieldCheck,
   Sparkles,
-  Star,
-  Target,
-  TrendingDown,
   Trophy,
   X,
-  Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { activityStats } from "./activity-stats";
 import {
-  type PeriodSummary,
   currentMonth,
   insightMoney,
   insightSignedMoney,
@@ -35,8 +23,8 @@ import {
   shiftMonth,
   validDateKey,
 } from "./insight-periods";
-import RecapValue from "./RecapValue";
-import { Logo, Title } from "./ui";
+import RecapStory from "./RecapStory";
+import { Title } from "./ui";
 import { type Log, localToday, signedMoney } from "./upby-core";
 import WeeklySummary from "./WeeklySummary";
 
@@ -75,7 +63,7 @@ export function earnedFrom(logs: Log[], net: number) {
   );
 }
 
-export function Insights({ net, logs, freshStart, profile }: any) {
+export function Insights({ net, logs, freshStart, profile, authUserId }: any) {
   const [month, setMonth] = useState(() => currentMonth());
   const [pop, setPop] = useState<string | null>(null);
   const [recapPeriod, setRecapPeriod] = useState(() => currentMonth());
@@ -270,13 +258,13 @@ export function Insights({ net, logs, freshStart, profile }: any) {
         </div>
       </section>
       <AnimatePresence>
-        {pop && <Badge pop={pop} net={net} recapPeriod={recapPeriod} recapOverride={recapFor(recapPeriod)} close={() => setPop(null)} />}
+        {pop && <Badge pop={pop} net={net} recapPeriod={recapPeriod} recapOverride={recapFor(recapPeriod)} profile={profile} userId={authUserId} close={() => setPop(null)} />}
       </AnimatePresence>
     </div>
   );
 }
 
-export function Badge({ pop, net, recapPeriod, recapOverride, close }: any) {
+export function Badge({ pop, net, recapPeriod, recapOverride, close, profile, userId }: any) {
   return (
     <motion.div
       className="backdrop center"
@@ -286,13 +274,13 @@ export function Badge({ pop, net, recapPeriod, recapOverride, close }: any) {
       onMouseDown={close}
     >
       <motion.div
-        className={pop === "recap" ? "pop recap-pop" : "pop"}
+        className={pop === "recap" ? "pop recap-pop rs-pop" : "pop"}
         initial={{ scale: 0.85, y: 30 }}
         animate={{ scale: 1, y: 0 }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         {pop === "recap" ? (
-          <RecapStory period={recapPeriod} recapOverride={recapOverride} />
+          <RecapStory period={recapPeriod} recapOverride={recapOverride} profile={profile} userId={userId} />
         ) : (
           <>
             <i className="giant">
@@ -321,127 +309,3 @@ export function Badge({ pop, net, recapPeriod, recapOverride, close }: any) {
   );
 }
 
-export function RecapStory({ period, recapOverride }: { period: string; recapOverride: PeriodSummary }) {
-  const [slide, setSlide] = useState(0);
-  const reduced = useReducedMotion();
-  const [direction, setDirection] = useState(1);
-  const recap = recapOverride;
-  const money = insightMoney;
-  const label = periodLabel(period);
-  const [shareStatus, setShareStatus] = useState("");
-  const shareRecap = async () => {
-    const text = `My ${label} on UPBY: ${insightSignedMoney(recap.net)} net. ${money(recap.wins)} wins, ${money(recap.losses)} losses. ${recap.winCount + recap.lossCount} entries.`;
-    try {
-      if (navigator.share) await navigator.share({title: "My UPBY recap", text});
-      else { await navigator.clipboard.writeText(text); setShareStatus("Recap copied. Paste it into your post."); }
-    } catch (error) { if (!(error instanceof Error && error.name === "AbortError")) setShareStatus("Sharing failed. Please try again."); }
-  };
-  const net = recap.wins - recap.losses;
-  const isYear = period.length === 4;
-  const next = () => { setDirection(1); setSlide((value) => Math.min(5, value + 1)); };
-  const previous = () => { setDirection(-1); setSlide((value) => Math.max(0, value - 1)); };
-  return (
-    <MotionConfig reducedMotion="user"><div className="recap-story" onKeyDown={e => {if(e.key === "ArrowRight") next(); if(e.key === "ArrowLeft") previous();}}>
-      <div className="story-progress">
-        {[0, 1, 2, 3, 4, 5].map((item) => <button aria-label={`Recap page ${item + 1} of 6`} aria-current={item === slide ? "step" : undefined} className={item <= slide ? "active" : ""} key={item} onClick={() => {setDirection(item > slide ? 1 : -1);setSlide(item);}} />)}
-      </div>
-      <AnimatePresence mode="wait">
-        <motion.section
-          className={"story-slide story-" + slide}
-          key={slide}
-          initial={reduced ? false : { opacity: 0, x: direction * 50, scale: .96 }}
-          animate={{ opacity: 1, x: 0, scale: 1 }}
-          exit={reduced ? {opacity:0} : { opacity: 0, x: direction * -40, scale: .98 }}
-          transition={{duration: reduced ? 0 : .32}}
-          drag="x"
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={.12}
-          onDragEnd={(_, info) => info.offset.x < -55 ? next() : info.offset.x > 55 ? previous() : null}
-        >
-          <Logo />
-          {slide === 0 && <>
-            <div className="story-icon-stage result-icons">
-              <motion.i animate={{ rotate: [0, 8, 0], y: [0, -5, 0] }} transition={{ duration: 2.4, repeat: reduced ? 0 : Infinity }}><ArrowUpRight /></motion.i>
-              <Sparkles className="orbit-icon one" />
-              <Star className="orbit-icon two" />
-              <Zap className="orbit-icon three" />
-            </div>
-            <span>{isYear ? "YOUR YEAR ON UPBY" : "YOUR " + label.toUpperCase()}</span>
-            <h2><RecapValue value={net} signed /></h2>
-            <b>{isYear ? "UP BY THIS YEAR" : "UP BY THIS MONTH"}</b>
-            <p>{isYear ? "Your dated entries, added up for the year." : "Every log added up to this."}</p>
-          </>}
-          {slide === 1 && <>
-            <div className="story-icon-stage win-icons">
-              <motion.i animate={{ scale: [1, 1.08, 1] }} transition={{ duration: 1.8, repeat: reduced ? 0 : Infinity }}><CircleDollarSign /></motion.i>
-              <ArrowUpRight className="orbit-icon one" />
-              <Sparkles className="orbit-icon two" />
-              <Award className="orbit-icon three" />
-            </div>
-            <span>THE WINS</span>
-            <h2><RecapValue value={recap.wins} /></h2>
-            <b>YOU KEPT SHOWING UP</b>
-            <div className="story-stat"><strong>{recap.winCount}</strong><small>WINS LOGGED</small></div>
-            <p>{recap.bestDay !== null ? `Best daily net: ${insightSignedMoney(recap.bestDay)}` : "No entries logged in this period."}</p>
-          </>}
-          {slide === 2 && <>
-            <div className="story-icon-stage loss-icons">
-              <motion.i animate={{ rotate: [0, -5, 5, 0] }} transition={{ duration: 2.6, repeat: reduced ? 0 : Infinity }}><ShieldCheck /></motion.i>
-              <TrendingDown className="orbit-icon one" />
-              <Target className="orbit-icon two" />
-              <ArrowUpRight className="orbit-icon three" />
-            </div>
-            <span>THE FULL PICTURE</span>
-            <h2><RecapValue value={recap.losses} /></h2>
-            <b>LOSSES LOGGED</b>
-            <p>Progress was never hidden. You recorded the hard days and kept moving.</p>
-            <div className="story-balance"><span>WINS</span><motion.i initial={{scaleX:reduced ? 1 : 0}} animate={{scaleX:1}} transition={{duration:reduced ? 0 : .9}} style={{ width: Math.round((recap.wins / Math.max(1, recap.wins + recap.losses)) * 100) + "%" }} /><span>LOSSES</span></div>
-          </>}
-          {slide === 3 && <>
-            <div className="story-icon-stage streak-icons">
-              <motion.i animate={{ y: [0, -6, 0], rotate: [0, 3, 0] }} transition={{ duration: 1.7, repeat: reduced ? 0 : Infinity }}><Flame /></motion.i>
-              <Crown className="orbit-icon one" />
-              <Trophy className="orbit-icon two" />
-              <Star className="orbit-icon three" />
-            </div>
-            <span>CONSISTENCY</span>
-            <h2><RecapValue value={recap.longestStreak} currency={false} /></h2>
-            <b>DAY LONGEST STREAK</b>
-            <div className="story-rank"><Trophy /><span>DAYS LOGGED</span><strong>{recap.activeDays}</strong></div>
-          </>}
-          {slide === 4 && <>
-            <div className="story-icon-stage category-icons"><motion.i initial={reduced ? false : {scale:.3,rotate:-25}} animate={{scale:1,rotate:0}} transition={{type:"spring",stiffness:180,damping:14}}><BarChart3 /></motion.i></div>
-            <span>WHERE YOUR PROGRESS CAME FROM</span>
-            <h3 className="story-category-title">Your category highlights</h3>
-            <div className="story-category-list">
-              {recap.categories.slice(0,3).map((category,index)=><motion.div key={category.name} initial={reduced ? false : {opacity:0,y:18}} animate={{opacity:1,y:0}} transition={{delay:reduced ? 0 : index*.16}}>
-                <header><b>{category.name}</b><strong>{insightSignedMoney(category.net)}</strong></header>
-                <div><motion.i initial={{scaleX:reduced ? 1 : 0}} animate={{scaleX:1}} transition={{duration:reduced ? 0 : .8,delay:reduced ? 0 : index*.16}} style={{width:`${Math.max(4,Math.abs(category.net)/Math.max(1,...recap.categories.map(c=>Math.abs(c.net)))*100)}%`}} /></div>
-              </motion.div>)}
-              {!recap.categories.length && <p>No categories logged in this period.</p>}
-            </div>
-            <p>Net progress in each category, after losses.</p>
-          </>}
-          {slide === 5 && <>
-            <div className="story-icon-stage final-icons">
-              <motion.i animate={{ rotate: [0, 360] }} transition={{ duration: 12, repeat: reduced ? 0 : Infinity, ease: "linear" }}><Crown /></motion.i>
-              <Medal className="orbit-icon one" />
-              <Share2 className="orbit-icon two" />
-              <Sparkles className="orbit-icon three" />
-            </div>
-            <span>{"MY " + label.toUpperCase()}</span>
-            <div className="final-split"><b>{money(recap.wins)}<small>WINS</small></b><b>{money(recap.losses)}<small>LOSSES</small></b></div>
-            <h2><RecapValue value={net} signed /></h2>
-            <b>UP BY</b>
-            <footer>{recap.winCount} WINS · {recap.lossCount} LOSSES<br />{recap.longestStreak} DAY LONGEST STREAK</footer>
-          </>}
-        </motion.section>
-      </AnimatePresence>
-      <div className="story-controls">
-        <button onClick={previous} disabled={slide === 0}><ChevronLeft /> BACK</button>
-        {slide < 5 ? <button onClick={next}>NEXT <ChevronRight /></button> : <button className="story-share" onClick={() => void shareRecap()}><Share2 /> SHARE RECAP</button>}
-      </div>
-      <small className="swipe-hint" role="status">{shareStatus || "SWIPE OR USE THE BUTTONS"}</small>
-    </div></MotionConfig>
-  );
-}

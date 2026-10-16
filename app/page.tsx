@@ -599,7 +599,7 @@ export default function App() {
               }}
             />
           ) : tab === "insights" ? (
-            <Insights {...{ net, wins, losses, logs, freshStart, profile }} />
+            <Insights {...{ net, wins, losses, logs, freshStart, profile, authUserId }} />
           ) : tab === "leaderboard" ? (
             <Leaderboard embedded close={() => nav("home")} following={following} setFollowing={setFollowing} freshStart={freshStart} profile={profile} net={net} logs={logs} leaderboard={leaderboard} authUserId={authUser?.id} />
           ) : (
@@ -609,7 +609,7 @@ export default function App() {
       </AnimatePresence>
       <Bottom tab={tab} nav={nav} add={() => setQuick(true)} />
       {hydrated && authUser?.id && !demoMode && <MonthlyRecapPrompt key={authUser.id} userId={authUser.id} today={calendarDay} dates={logs.map(log=>log.dateKey)} blocked={Boolean(quick || sheet || editing || board || share || success || monthlyRecap || tab !== "home")} onOpen={setMonthlyRecap} />}
-      <AnimatePresence>{monthlyRecap && <Badge pop="recap" net={net} recapPeriod={monthlyRecap} recapOverride={periodSummary(logs,monthlyRecap)} close={()=>setMonthlyRecap(null)} />}</AnimatePresence>
+      <AnimatePresence>{monthlyRecap && <Badge pop="recap" net={net} recapPeriod={monthlyRecap} recapOverride={periodSummary(logs,monthlyRecap)} profile={profile} userId={authUserId} close={()=>setMonthlyRecap(null)} />}</AnimatePresence>
       <AnimatePresence>
         {quick && (
           <QuickLog
