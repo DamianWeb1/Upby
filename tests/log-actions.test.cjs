@@ -4,6 +4,8 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const ts = require('typescript');
 const source = fs.readFileSync('app/page.tsx', 'utf8');
+const core = fs.readFileSync('app/upby-core.ts', 'utf8');
+const helperSource = core.slice(core.indexOf('export async function authenticatedWrite'), core.indexOf('export function localToday')).replace(/^export /gm, '');
 function harness(fail = false) {
   let rows = [], undo, status, writes = [], release;
   const gate = new Promise(resolve => release = resolve);
@@ -20,7 +22,7 @@ function harness(fail = false) {
     }}, auth:{refreshSession:async()=>({error:null})}},
   };
   vm.createContext(context);
-  const helper=source.slice(source.indexOf('async function authenticatedWrite'),source.indexOf('function localToday'));
+  const helper=helperSource;
   const actions=source.slice(source.indexOf('  const persistLog ='),source.indexOf('  const signOut ='));
   vm.runInContext(ts.transpile(helper+actions+'\nglobalThis.actions = {add, removeLog, persistLog};', {target:ts.ScriptTarget.ES2022}), context);
   return {context, get rows(){return rows},get undo(){return undo},get status(){return status},writes,
@@ -40,7 +42,7 @@ test('failed undo keeps restore available',async()=>{
  const h=harness();await h.add(entry);await h.removeLog(h.rows[0].id);h.fail(true);await h.persistLog(h.undo.log,'restore');assert.ok(h.undo);assert.equal(h.rows.length,0);
 });
 test('expired session refreshes once and retries the same write', async()=>{
- const helper=source.slice(source.indexOf('async function authenticatedWrite'),source.indexOf('function localToday'));
+ const helper=helperSource;
  let refreshes=0, attempts=0;
  const ctx={supabase:{auth:{refreshSession:async()=>{refreshes++;return {error:null}}}}};
  vm.createContext(ctx);vm.runInContext(ts.transpile(helper,{target:ts.ScriptTarget.ES2022}),ctx);
@@ -48,7 +50,7 @@ test('expired session refreshes once and retries the same write', async()=>{
  assert.equal(refreshes,1);assert.equal(attempts,2);
 });
 test('permission failures do not trigger session retries', async()=>{
- const helper=source.slice(source.indexOf('async function authenticatedWrite'),source.indexOf('function localToday'));
+ const helper=helperSource;
  let refreshes=0;
  const ctx={supabase:{auth:{refreshSession:async()=>{refreshes++;return {error:null}}}}};
  vm.createContext(ctx);vm.runInContext(ts.transpile(helper,{target:ts.ScriptTarget.ES2022}),ctx);
