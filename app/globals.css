@@ -4869,3 +4869,7 @@ button:disabled { cursor: wait; }
   .bottom > nav b { font-size: 9px; }
   .bottom > nav button > i { border-radius: 15px; }
 }
+
+.founder-feed .founder-fix { flex: none; align-self: center; margin-left: auto; padding: 7px 11px; border: 2px solid var(--ink); border-radius: 10px; background: var(--lime); color: var(--ink); font: inherit; font-size: 11px; font-weight: 900; cursor: pointer; white-space: nowrap; }
+.founder-feed .founder-fix:disabled { opacity: .6; cursor: default; }
+.founder-feed .founder-fix-note { margin-top: 10px; font-size: 12px; font-weight: 800; }

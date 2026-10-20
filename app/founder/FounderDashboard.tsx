@@ -18,7 +18,7 @@ type DashboardData = {
   dailyActivity: Array<{ day: string; users: number; events: number }>;
   topFeatures: Array<{ event: string; count: number; users: number }>;
   userRegions: Array<{ country: string; users: number }>;
-  recentErrors: Array<{ createdAt: string; area: string; code: string; source: string; errorCode: string; status: number; message: string; hint: string }>;
+  recentErrors: Array<{ createdAt: string; area: string; code: string; rawCode?: string; source: string; errorCode: string; status: number; message: string; hint: string }>;
   recentFeedback: Array<{ createdAt: string; name: string; type: string; message: string }>;
 };
 
@@ -40,6 +40,8 @@ export default function FounderDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "signed-out" | "denied" | "error">("loading");
   const [email, setEmail] = useState("");
+  const [fixing, setFixing] = useState<string | null>(null);
+  const [fixNote, setFixNote] = useState("");
 
   const loadDashboard = useCallback(async () => {
     setStatus("loading");
@@ -60,6 +62,18 @@ export default function FounderDashboard() {
   }, []);
 
   useEffect(() => { void loadDashboard(); }, [loadDashboard]);
+
+  const markFixed = async (item: DashboardData["recentErrors"][number]) => {
+    const key = `${item.rawCode ?? item.code}|${item.message}`;
+    if (!window.confirm(`Mark "${item.message || titleCase(item.code)}" as fixed?\n\nEvery earlier copy of this error will be hidden. If it happens again, it will show up again.`)) return;
+    setFixing(key); setFixNote("");
+    const { data: cleared, error } = await supabase.rpc("mark_error_fixed", { error_code: item.rawCode ?? "", error_message: item.message });
+    setFixing(null);
+    if (error) { setFixNote("Couldn't mark it fixed. Try again."); return; }
+    setFixNote(`Marked fixed. ${cleared === 1 ? "1 report" : `${cleared} reports`} cleared.`);
+    const { data: dashboard } = await supabase.rpc("get_founder_dashboard");
+    if (dashboard) setData(dashboard as DashboardData);
+  };
 
   if (status !== "ready" || !data) {
     return (
@@ -122,7 +136,8 @@ export default function FounderDashboard() {
         <article className="founder-panel">
           <header><div><span>RELIABILITY</span><h2>Recent errors</h2></div><b className={data.errorsToday ? "founder-bad" : "founder-good"}>{data.errorsToday ? <AlertTriangle /> : <CheckCircle2 />}{data.errorsToday ? `${data.errorsToday} FOUND` : "ALL CLEAR"}</b></header>
           <div className="founder-feed">
-            {data.recentErrors.length ? data.recentErrors.map((item, index) => <div key={`${item.createdAt}-${index}`}><i className="error" /><span><b>{titleCase(item.code)}</b><small>{titleCase(item.source || item.area)}{item.errorCode ? ` · ${item.errorCode}` : ""}{item.status ? ` · ${item.status}` : ""} · {shortTime(item.createdAt)}</small>{item.message && <em>{item.message}</em>}{item.hint && <em className="hint">{item.hint}</em>}</span></div>) : <p>No errors recorded in the last seven days.</p>}
+            {data.recentErrors.length ? data.recentErrors.map((item, index) => <div key={`${item.createdAt}-${index}`}><i className="error" /><span><b>{titleCase(item.code)}</b><small>{titleCase(item.source || item.area)}{item.errorCode ? ` · ${item.errorCode}` : ""}{item.status ? ` · ${item.status}` : ""} · {shortTime(item.createdAt)}</small>{item.message && <em>{item.message}</em>}{item.hint && <em className="hint">{item.hint}</em>}</span><button type="button" className="founder-fix" disabled={fixing === `${item.rawCode ?? item.code}|${item.message}`} onClick={() => void markFixed(item)}>{fixing === `${item.rawCode ?? item.code}|${item.message}` ? "Saving…" : "Mark fixed"}</button></div>) : <p>No errors recorded in the last seven days.</p>}
+            {fixNote && <p className="founder-fix-note" role="status">{fixNote}</p>}
           </div>
         </article>
 
