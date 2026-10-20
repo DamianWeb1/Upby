@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Bottom, LogSuccess, QuickLog, Share } from "./AppChrome";
 import { AuthWelcome, Onboarding } from "./AuthScreens";
 import { errorMetadata } from "./error-metadata";
+import { retryAuthTiming } from "./auth-retry";
 import { HomeView } from "./HomeView";
 import { periodSummary } from "./insight-periods";
 import { Badge, Insights } from "./Insights";
@@ -185,11 +186,11 @@ export default function App() {
       setHydrated(false);
       try {
         const responses = await Promise.all([
-          supabase.from("user_states").select("state").eq("user_id", authUserId).maybeSingle(),
-          supabase.from("profiles").select("display_name,username,avatar_url,bio,x_profile,show_totals,show_logs,show_losses,show_screenshots,leaderboard_enabled,public_profile_enabled").eq("user_id", authUserId).maybeSingle(),
-          supabase.from("follows").select("followed_id").eq("follower_id", authUserId),
-          supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUserId),
-          supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,merchant,payment_method,screenshot,screenshot_path").eq("user_id", authUserId).order("id", { ascending: false }),
+          retryAuthTiming(() => supabase.from("user_states").select("state").eq("user_id", authUserId).maybeSingle()),
+          retryAuthTiming(() => supabase.from("profiles").select("display_name,username,avatar_url,bio,x_profile,show_totals,show_logs,show_losses,show_screenshots,leaderboard_enabled,public_profile_enabled").eq("user_id", authUserId).maybeSingle()),
+          retryAuthTiming(() => supabase.from("follows").select("followed_id").eq("follower_id", authUserId)),
+          retryAuthTiming(() => supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("followed_id", authUserId)),
+          retryAuthTiming(() => supabase.from("logs").select("id,user_id,type,amount,category,title,date_label,date_key,note,merchant,payment_method,screenshot,screenshot_path").eq("user_id", authUserId).order("id", { ascending: false })),
         ]);
         const [
           { data: stateData, error: stateError },
@@ -368,7 +369,7 @@ export default function App() {
     let active = true;
     const timer = window.setTimeout(async () => {
       try {
-        const { error: profileError } = await supabase.from("profiles").upsert({
+        const { error: profileError } = await retryAuthTiming(() => supabase.from("profiles").upsert({
           user_id: authUserId,
           display_name: profile.displayName,
           username: profile.username,
@@ -383,7 +384,7 @@ export default function App() {
           public_profile_enabled: Boolean(prefs[5]),
           ...(countryCode ? { country_code: countryCode } : {}),
           updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
+        }, { onConflict: "user_id" }));
         if (profileError) {
           void trackProductEvent(authUserId, "client_error", "profile", errorMetadata(profileError, "profiles", "profile_sync_failed"));
           return;
@@ -413,6 +414,16 @@ export default function App() {
       window.sessionStorage.setItem(key, String(now));
       void trackProductEvent(authUserId, "client_error", "runtime", { code, ...details });
     };
+    const fromExtension = (...parts: unknown[]) => parts.some((part) => /(chrome|moz|safari-web)-extension:\/\//.test(String(part || "")));
+    const describe = (value: unknown) => {
+      if (value instanceof Error) return value.message;
+      if (value && typeof value === "object") {
+        const message = (value as { message?: unknown }).message;
+        if (typeof message === "string" && message) return message;
+        try { return JSON.stringify(value).slice(0, 180); } catch { return "Unreadable error object"; }
+      }
+      return String(value || "");
+    };
     const runtimeDetails = (error: unknown, fallback: string, file = "", line = 0, column = 0) => {
       const stack = error instanceof Error && error.stack ? error.stack.split("\n").slice(0, 3).join(" | ") : "";
       let path = file;
@@ -427,13 +438,15 @@ export default function App() {
     };
     const onError = (event: ErrorEvent) => {
       if (/ResizeObserver loop|Script error/i.test(event.message || "")) return;
+      if (fromExtension(event.filename, event.error instanceof Error ? event.error.stack : "")) return;
       reportError("window_error", runtimeDetails(event.error, event.message, event.filename, event.lineno, event.colno));
     };
     const onRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason;
       const name = reason instanceof DOMException ? reason.name : "";
       if (name === "AbortError" || name === "NotAllowedError") return;
-      const message = reason instanceof Error ? reason.message : String(reason || "");
+      if (fromExtension(reason instanceof Error ? reason.stack : "", (reason as { stack?: unknown } | null)?.stack)) return;
+      const message = describe(reason);
       reportError(/failed to fetch|load failed|network/i.test(message) ? "network_rejection" : "unhandled_rejection", runtimeDetails(reason, message));
     };
     window.addEventListener("error", onError);
