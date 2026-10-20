@@ -6,6 +6,7 @@ import { AnimatePresence, m as motion, useReducedMotion } from "framer-motion";
 import { Pause, Play } from "lucide-react";
 import { buildRecap, type Recap, type RecapSlideId, type RecapSummary } from "./recap-story-data";
 import { trackProductEvent } from "./upby-core";
+import { recordRecap } from "./recap-views";
 
 const SITE = "getupby.vercel.app";
 const FONT = "'Bricolage Grotesque Variable', 'Avenir Next', sans-serif";
@@ -315,7 +316,10 @@ export default function RecapStory({ period, recapOverride, profile, userId }: {
   const id = slides[Math.min(index, slides.length - 1)];
   const last = index >= slides.length - 1;
 
-  useEffect(() => { void trackProductEvent(userId, "recap_opened", "recap", { kind: recap.isYear ? "year" : "month", slides: slides.length }); }, [userId, recap.isYear, slides.length]);
+  useEffect(() => {
+    void trackProductEvent(userId, "recap_opened", "recap", { kind: recap.isYear ? "year" : "month", slides: slides.length });
+    void recordRecap(userId, period, "viewed");
+  }, [userId, period, recap.isYear, slides.length]);
   useEffect(() => {
     if (id === "share" && !tracked.current.completed) { tracked.current.completed = true; void trackProductEvent(userId, "recap_completed", "recap", { kind: recap.isYear ? "year" : "month" }); }
   }, [id, userId, recap.isYear]);
